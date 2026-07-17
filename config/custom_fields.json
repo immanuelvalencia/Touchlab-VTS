@@ -1,0 +1,12 @@
+[
+    {
+        "name": "size",
+        "type": "Dropdown",
+        "options": [
+            "small",
+            "medium",
+            "large"
+        ],
+        "default": "small"
+    }
+]
