@@ -17,7 +17,7 @@
     "depth_scale": 8.0,
     "grid_res": 40,
     "blur_size": 9,
-    "diff_method": "Absolute Difference (ABS)",
+    "diff_method": "Texture Contrast Difference (TCD)",
     "abs_thresh": 0.08,
     "abs_blur": 9,
     "grad_thresh": 0.05,
@@ -30,7 +30,7 @@
     "hsv_wH": 1.2,
     "hsv_wS": 0.8,
     "hsv_wV": 0.5,
-    "tcd_thresh": 0.05,
+    "tcd_thresh": 0.06,
     "tcd_ksize": 7,
     "vector_scale": 2.5,
     "vector_min_mag": 1.5,
@@ -49,5 +49,7 @@
     "w_xB": 0.0,
     "w_yR": 0.0,
     "w_yG": 0.0,
-    "w_yB": 1.5
+    "w_yB": 1.5,
+    "enable_raw": true,
+    "layout_cols": "1"
 }

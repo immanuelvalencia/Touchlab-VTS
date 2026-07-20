@@ -1,0 +1,13 @@
+Final Test Accuracy: 0.9322
+
+Classification Report:
+              precision    recall  f1-score   support
+
+        cone       0.98      0.96      0.97       122
+        cube       0.87      0.82      0.84       133
+    cylinder       0.92      0.94      0.93       300
+     pyramid       0.96      0.97      0.96       242
+
+    accuracy                           0.93       797
+   macro avg       0.93      0.92      0.93       797
+weighted avg       0.93      0.93      0.93       797

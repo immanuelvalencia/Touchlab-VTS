@@ -15,34 +15,14 @@ import json
 import importlib
 import sys
 import pathlib
-import os
-import sys
-import pathlib
 
-# Add the root 'visuotactile' directory to sys.path so 'apps.models' can be found
-_root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Add the root directory to sys.path so 'models' can be found
+_root_dir = os.path.dirname(os.path.abspath(__file__))
 if _root_dir not in sys.path:
     sys.path.insert(0, _root_dir)
 
-
 MODEL_MODULES = {
-    "ResNet-18": "apps.models.resnet18_predict",
-}
-import importlib
-import sys
-import pathlib
-import os
-import sys
-import pathlib
-
-# Add the root 'visuotactile' directory to sys.path so 'apps.models' can be found
-_root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if _root_dir not in sys.path:
-    sys.path.insert(0, _root_dir)
-
-
-MODEL_MODULES = {
-    "ResNet-18": "apps.models.resnet18_predict",
+    "ResNet-18": "models.resnet18",
 }
 
 # --- Fast Poisson Solver using 2D DST-I ---
@@ -103,7 +83,6 @@ class PredictionApp:
                 default_source = src
                 break
         self.source_var = tk.StringVar(value=default_source)
-        self.display_3d_var = tk.BooleanVar(value=True)
         self.invert_depth_var = tk.BooleanVar(value=False)
         
         # Sliders state variables
@@ -173,13 +152,15 @@ class PredictionApp:
         self.status_var = tk.StringVar(value="Status: Ready")
         
         # Feature Toggles
+        self.enable_raw_var = tk.BooleanVar(value=True)
         self.enable_heatmap_var = tk.BooleanVar(value=True)
         self.enable_flow_var = tk.BooleanVar(value=True)
         self.enable_reconstruction_var = tk.BooleanVar(value=True)
+        self.layout_cols_var = tk.StringVar(value="Auto")
 
         self.custom_fields = []
         self.custom_field_vars = {}
-        self.custom_fields_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "custom_fields.json")
+        self.custom_fields_file = os.path.join(os.path.dirname(__file__), "config", "custom_fields.json")
         self.load_custom_fields()
         
         # Sequence Recording state
@@ -193,7 +174,7 @@ class PredictionApp:
         # Data Gathering state variables
         self.camera_res_var = tk.StringVar(value="Camera Native Resolution: Unknown")
         self.frame_scale_var = tk.DoubleVar(value=1.0)
-        self.dataset_dir_var = tk.StringVar(value=os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(__file__)), "dataset")))
+        self.dataset_dir_var = tk.StringVar(value=os.path.abspath(os.path.join(os.path.dirname(__file__), "dataset")))
         self.label_var = tk.StringVar(value="")
         self.save_raw_var = tk.BooleanVar(value=True)
         self.save_contact_var = tk.BooleanVar(value=True)
@@ -248,12 +229,12 @@ class PredictionApp:
         """Loads sensors from individual json files in sensor_configs folder."""
         import glob
         sensors = []
-        configs_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config")
+        configs_dir = os.path.join(os.path.dirname(__file__), "config")
         
         if not os.path.exists(configs_dir):
             os.makedirs(configs_dir)
             # Migrate old sensors.json if it exists
-            sensors_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "sensors.json")
+            sensors_path = os.path.join(os.path.dirname(__file__), "sensors.json")
             if os.path.exists(sensors_path):
                 try:
                     with open(sensors_path, "r") as f:
@@ -283,7 +264,7 @@ class PredictionApp:
 
     def save_sensors(self):
         import glob
-        configs_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config")
+        configs_dir = os.path.join(os.path.dirname(__file__), "config")
         if not os.path.exists(configs_dir):
             os.makedirs(configs_dir)
             
@@ -581,16 +562,13 @@ class PredictionApp:
         if MODEL_MODULES:
             self.cb_model.current(0)
         self.cb_model.pack(fill=tk.X, pady=(2, 8))
+        self.cb_model.bind("<<ComboboxSelected>>", self.on_model_selected)
 
         # Frame source
         tk.Label(tab_prediction, text="Input Frame Source:", bg="#ffffff", fg="#495057", font=("Segoe UI", 9, "bold")).pack(anchor=tk.W, pady=(5, 0))
         self.frame_source_var = tk.StringVar(value="Raw Frame")
         self.cb_frame_src = ttk.Combobox(tab_prediction, textvariable=self.frame_source_var, values=["Raw Frame", "Heatmap (2D Height)", "Flow", "Contact Mask"], state="readonly")
         self.cb_frame_src.pack(fill=tk.X, pady=(2, 8))
-
-        # Toggle Continuous Prediction
-        self.continuous_pred_var = tk.BooleanVar(value=False)
-        tk.Checkbutton(tab_prediction, text="Continuous Prediction (Live)", variable=self.continuous_pred_var, bg="#ffffff", fg="#212529", selectcolor="#ffffff", activebackground="#ffffff", activeforeground="#212529", font=("Segoe UI", 9, "bold")).pack(anchor=tk.W, pady=5)
 
         # Prediction Threshold
         thresh_frame = tk.Frame(tab_prediction, bg="#ffffff")
@@ -602,8 +580,24 @@ class PredictionApp:
 
         # Result Display
         self.pred_result_var = tk.StringVar(value="Waiting...")
-        self.lbl_result = tk.Label(tab_prediction, textvariable=self.pred_result_var, font=("Segoe UI", 14, "bold"), bg="#007bff", fg="#ffffff", pady=10)
-        self.lbl_result.pack(fill=tk.X, pady=10)
+        self.lbl_result = tk.Label(tab_prediction, textvariable=self.pred_result_var, font=("Segoe UI", 16, "bold"), bg="#007bff", fg="#ffffff", pady=15)
+        self.lbl_result.pack(fill=tk.X, pady=(10, 5))
+
+        # Class Probabilities Table
+        tk.Label(tab_prediction, text="Class Probabilities:", bg="#ffffff", fg="#495057", font=("Segoe UI", 9, "bold")).pack(anchor=tk.W, pady=(5, 0))
+        self.tree_probs = ttk.Treeview(tab_prediction, columns=("Class", "Probability"), show="headings", height=5)
+        self.tree_probs.heading("Class", text="Class")
+        self.tree_probs.heading("Probability", text="Probability (%)")
+        self.tree_probs.column("Class", width=120)
+        self.tree_probs.column("Probability", width=100, anchor=tk.E)
+        self.tree_probs.pack(fill=tk.X, pady=(0, 10))
+        
+        self.root.after(100, self.on_model_selected)
+
+        # Logs Section
+        tk.Label(tab_prediction, text="Logs:", bg="#ffffff", fg="#495057", font=("Segoe UI", 9, "bold")).pack(anchor=tk.W, pady=(5, 0))
+        self.txt_logs = tk.Text(tab_prediction, height=8, bg="#f8f9fa", font=("Consolas", 8), state=tk.DISABLED)
+        self.txt_logs.pack(fill=tk.BOTH, expand=True, pady=5)
 
         # Variables for prediction loop
         self.last_pred_time = 0
@@ -637,12 +631,20 @@ class PredictionApp:
         
         self.add_slider(tab_setup, "Mesh Grid Res:", self.grid_res, 20, 80, is_int=True)
         self.add_slider(tab_setup, "Gaussian Filter Size:", self.blur_size, 1, 21, is_int=True)
-        tk.Checkbutton(tab_setup, text="Enable 3D Render", variable=self.display_3d_var, bg="#ffffff", fg="#212529", selectcolor="#ffffff", activebackground="#ffffff", activeforeground="#212529").pack(anchor=tk.W, pady=5)
         
         # Feature Toggles UI
-        tk.Checkbutton(tab_setup, text="Enable Contact Heatmap", variable=self.enable_heatmap_var, bg="#ffffff", fg="#212529", selectcolor="#ffffff", activebackground="#ffffff", activeforeground="#212529").pack(anchor=tk.W, pady=2)
-        tk.Checkbutton(tab_setup, text="Enable Optical Flow", variable=self.enable_flow_var, bg="#ffffff", fg="#212529", selectcolor="#ffffff", activebackground="#ffffff", activeforeground="#212529").pack(anchor=tk.W, pady=2)
-        tk.Checkbutton(tab_setup, text="Enable 3D Reconstruction", variable=self.enable_reconstruction_var, bg="#ffffff", fg="#212529", selectcolor="#ffffff", activebackground="#ffffff", activeforeground="#212529").pack(anchor=tk.W, pady=2)
+        tk.Checkbutton(tab_setup, text="Enable Raw Feed", variable=self.enable_raw_var, command=self.rebuild_dashboard_grid, bg="#ffffff", fg="#212529", selectcolor="#ffffff", activebackground="#ffffff", activeforeground="#212529").pack(anchor=tk.W, pady=2)
+        tk.Checkbutton(tab_setup, text="Enable Contact Heatmap", variable=self.enable_heatmap_var, command=self.rebuild_dashboard_grid, bg="#ffffff", fg="#212529", selectcolor="#ffffff", activebackground="#ffffff", activeforeground="#212529").pack(anchor=tk.W, pady=2)
+        tk.Checkbutton(tab_setup, text="Enable Optical Flow", variable=self.enable_flow_var, command=self.rebuild_dashboard_grid, bg="#ffffff", fg="#212529", selectcolor="#ffffff", activebackground="#ffffff", activeforeground="#212529").pack(anchor=tk.W, pady=2)
+        tk.Checkbutton(tab_setup, text="Enable 3D Reconstruction", variable=self.enable_reconstruction_var, command=self.rebuild_dashboard_grid, bg="#ffffff", fg="#212529", selectcolor="#ffffff", activebackground="#ffffff", activeforeground="#212529").pack(anchor=tk.W, pady=2)
+
+        # Grid Layout Layout
+        layout_frame = tk.Frame(tab_setup, bg="#ffffff")
+        layout_frame.pack(fill=tk.X, pady=(5, 10))
+        tk.Label(layout_frame, text="Grid Layout Columns:", bg="#ffffff", fg="#495057", font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT)
+        self.cb_layout_cols = ttk.Combobox(layout_frame, textvariable=self.layout_cols_var, values=["Auto", "1", "2", "3", "4"], state="readonly", width=8)
+        self.cb_layout_cols.pack(side=tk.LEFT, padx=5)
+        self.cb_layout_cols.bind("<<ComboboxSelected>>", lambda e: self.rebuild_dashboard_grid())
 
         # Save Configuration Button
         # Save Toggles (Checkboxes)
@@ -747,36 +749,32 @@ class PredictionApp:
         self.fps_lbl.pack(side=tk.BOTTOM, fill=tk.X, pady=(0, 2))
         
         # --- RIGHT AREA: 2X2 DASHBOARD GRID ---
-        grid_frame = tk.Frame(main_frame, bg="#f8f9fa")
-        grid_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.grid_frame = tk.Frame(main_frame, bg="#f8f9fa")
+        self.grid_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         
         # Configure Grid Weights
-        grid_frame.rowconfigure(0, weight=1)
-        grid_frame.rowconfigure(1, weight=1)
-        grid_frame.columnconfigure(0, weight=1)
-        grid_frame.columnconfigure(1, weight=1)
+        self.grid_frame.rowconfigure(0, weight=1)
+        self.grid_frame.rowconfigure(1, weight=1)
+        self.grid_frame.columnconfigure(0, weight=1)
+        self.grid_frame.columnconfigure(1, weight=1)
         
         # 1. Raw Stream Canvas
-        self.p1 = tk.LabelFrame(grid_frame, text="Raw Feed", bg="#ffffff", fg="#007bff", font=("Segoe UI", 10, "bold"), padx=5, pady=5)
-        self.p1.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+        self.p1 = tk.LabelFrame(self.grid_frame, text="Raw Feed", bg="#ffffff", fg="#007bff", font=("Segoe UI", 10, "bold"), padx=5, pady=5)
         self.lbl_raw = tk.Label(self.p1, bg="#f8f9fa")
         self.lbl_raw.pack(fill=tk.BOTH, expand=True)
         
         # 2. Difference Map Canvas
-        self.p2 = tk.LabelFrame(grid_frame, text="Difference / Contact Heatmap", bg="#ffffff", fg="#007bff", font=("Segoe UI", 10, "bold"), padx=5, pady=5)
-        self.p2.grid(row=0, column=1, padx=5, pady=5, sticky="nsew")
+        self.p2 = tk.LabelFrame(self.grid_frame, text="Difference / Contact Heatmap", bg="#ffffff", fg="#007bff", font=("Segoe UI", 10, "bold"), padx=5, pady=5)
         self.lbl_diff = tk.Label(self.p2, bg="#f8f9fa")
         self.lbl_diff.pack(fill=tk.BOTH, expand=True)
         
         # 3. Deformation Vectors Canvas
-        self.p3 = tk.LabelFrame(grid_frame, text="Deformation Field Vectors (Optical Flow)", bg="#ffffff", fg="#007bff", font=("Segoe UI", 10, "bold"), padx=5, pady=5)
-        self.p3.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
+        self.p3 = tk.LabelFrame(self.grid_frame, text="Deformation Field Vectors (Optical Flow)", bg="#ffffff", fg="#007bff", font=("Segoe UI", 10, "bold"), padx=5, pady=5)
         self.lbl_vectors = tk.Label(self.p3, bg="#f8f9fa")
         self.lbl_vectors.pack(fill=tk.BOTH, expand=True)
         
         # 4. 3D Mesh / Reconstruction (Matplotlib)
-        self.p4 = tk.LabelFrame(grid_frame, text="3D Height Reconstruction", bg="#ffffff", fg="#007bff", font=("Segoe UI", 10, "bold"), padx=5, pady=5)
-        self.p4.grid(row=1, column=1, padx=5, pady=5, sticky="nsew")
+        self.p4 = tk.LabelFrame(self.grid_frame, text="3D Height Reconstruction", bg="#ffffff", fg="#007bff", font=("Segoe UI", 10, "bold"), padx=5, pady=5)
         
         # Pop-out Viewer Button
         self.btn_popout = tk.Button(self.p4, text="Pop-out Viewer ↗", bg="#007bff", fg="white", font=("Segoe UI", 9, "bold"), relief=tk.FLAT, bd=0, command=self.open_popout_viewer, height=1)
@@ -798,6 +796,76 @@ class PredictionApp:
         
         self.canvas_3d = FigureCanvasTkAgg(self.fig, master=self.p4)
         self.canvas_3d.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        
+        # Call once to initialize grid layout based on default toggles
+        self.rebuild_dashboard_grid()
+
+    def rebuild_dashboard_grid(self):
+        # 1. Hide all panels
+        self.p1.grid_forget()
+        self.p2.grid_forget()
+        self.p3.grid_forget()
+        self.p4.grid_forget()
+        
+        # 2. Reset weights
+        self.grid_frame.rowconfigure(0, weight=0)
+        self.grid_frame.rowconfigure(1, weight=0)
+        self.grid_frame.columnconfigure(0, weight=0)
+        self.grid_frame.columnconfigure(1, weight=0)
+        
+        # 3. Determine active panels
+        active = []
+        if self.enable_raw_var.get(): active.append(self.p1)
+        if self.enable_heatmap_var.get(): active.append(self.p2)
+        if self.enable_flow_var.get(): active.append(self.p3)
+        if self.enable_reconstruction_var.get(): active.append(self.p4)
+        
+        if not active:
+            return
+            
+        n = len(active)
+        layout_mode = self.layout_cols_var.get()
+        
+        if layout_mode == "Auto":
+            if n == 1:
+                active[0].grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+                self.grid_frame.rowconfigure(0, weight=1)
+                self.grid_frame.columnconfigure(0, weight=1)
+            elif n == 2:
+                active[0].grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+                active[1].grid(row=0, column=1, padx=5, pady=5, sticky="nsew")
+                self.grid_frame.rowconfigure(0, weight=1)
+                self.grid_frame.columnconfigure(0, weight=1)
+                self.grid_frame.columnconfigure(1, weight=1)
+            elif n == 3:
+                # 2 on top, 1 on bottom left
+                active[0].grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+                active[1].grid(row=0, column=1, padx=5, pady=5, sticky="nsew")
+                active[2].grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
+                self.grid_frame.rowconfigure(0, weight=1)
+                self.grid_frame.rowconfigure(1, weight=1)
+                self.grid_frame.columnconfigure(0, weight=1)
+                self.grid_frame.columnconfigure(1, weight=1)
+            elif n == 4:
+                active[0].grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+                active[1].grid(row=0, column=1, padx=5, pady=5, sticky="nsew")
+                active[2].grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
+                active[3].grid(row=1, column=1, padx=5, pady=5, sticky="nsew")
+                self.grid_frame.rowconfigure(0, weight=1)
+                self.grid_frame.rowconfigure(1, weight=1)
+                self.grid_frame.columnconfigure(0, weight=1)
+                self.grid_frame.columnconfigure(1, weight=1)
+        else:
+            try:
+                cols = int(layout_mode)
+            except ValueError:
+                cols = 2
+            for i, panel in enumerate(active):
+                r = i // cols
+                c = i % cols
+                panel.grid(row=r, column=c, padx=5, pady=5, sticky="nsew")
+                self.grid_frame.rowconfigure(r, weight=1)
+                self.grid_frame.columnconfigure(c, weight=1)
         
     def add_slider(self, parent, text, var, val_min, val_max, is_int=False):
         frame = tk.Frame(parent, bg="#ffffff")
@@ -876,10 +944,11 @@ class PredictionApp:
             return
 
         settings = {
+            "enable_raw": self.enable_raw_var.get(),
             "enable_heatmap": self.enable_heatmap_var.get(),
             "enable_flow": self.enable_flow_var.get(),
             "enable_reconstruction": self.enable_reconstruction_var.get(),
-            "display_3d": self.display_3d_var.get(),
+            "layout_cols": self.layout_cols_var.get(),
             "save_raw": self.save_raw_var.get(),
             "save_contact": self.save_contact_var.get(),
             "save_mask": self.save_mask_var.get(),
@@ -931,7 +1000,7 @@ class PredictionApp:
         self.sensors[current_sensor_idx].update(settings)
         self.save_sensors()
         
-        config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "config.json")
+        config_path = os.path.join(os.path.dirname(__file__), "config", "config.json")
         try:
             with open(config_path, "w") as f:
                 json.dump({"source": source_name}, f, indent=4)
@@ -1068,7 +1137,7 @@ class PredictionApp:
     def load_config(self):
 
         """Loads last used source from global config file."""
-        config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "config.json")
+        config_path = os.path.join(os.path.dirname(__file__), "config", "config.json")
         if not os.path.exists(config_path):
             return
         try:
@@ -1141,10 +1210,11 @@ class PredictionApp:
                 if key in current_sensor:
                     var.set(type_cast(current_sensor[key]))
 
+            set_val(self.enable_raw_var, "enable_raw", bool)
             set_val(self.enable_heatmap_var, "enable_heatmap", bool)
             set_val(self.enable_flow_var, "enable_flow", bool)
             set_val(self.enable_reconstruction_var, "enable_reconstruction", bool)
-            set_val(self.display_3d_var, "display_3d", bool)
+            set_val(self.layout_cols_var, "layout_cols", str)
             set_val(self.save_raw_var, "save_raw", bool)
             set_val(self.save_contact_var, "save_contact", bool)
             set_val(self.save_mask_var, "save_mask", bool)
@@ -1198,6 +1268,7 @@ class PredictionApp:
             
             # Rebuild dynamic sliders based on newly loaded method
             self.update_diff_widgets(None)
+            self.rebuild_dashboard_grid()
             
             # Automatically start background baseline calibration when camera connects
             self.capture_reference()
@@ -1288,6 +1359,38 @@ class PredictionApp:
 
     # --- Video / Image Processing Thread Loop ---
     
+    def log_message(self, message):
+        import datetime
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+        def append_log():
+            self.txt_logs.config(state=tk.NORMAL)
+            self.txt_logs.insert(tk.END, f"[{timestamp}] {message}\n")
+            self.txt_logs.see(tk.END)
+            self.txt_logs.config(state=tk.DISABLED)
+        self.root.after(0, append_log)
+
+    def update_treeview(self, probabilities):
+        for item in self.tree_probs.get_children():
+            self.tree_probs.delete(item)
+        sorted_probs = sorted(probabilities.items(), key=lambda x: x[1], reverse=True)
+        for class_name, prob in sorted_probs:
+            self.tree_probs.insert("", tk.END, values=(class_name, f"{prob:.1f}%"))
+
+    def on_model_selected(self, event=None):
+        model_name = self.model_var.get()
+        if not model_name: return
+        module_path = MODEL_MODULES.get(model_name)
+        if not module_path: return
+        try:
+            mod = importlib.import_module(module_path)
+            if hasattr(mod, "get_classes"):
+                classes = mod.get_classes()
+                self.update_treeview({c: 0.0 for c in classes})
+            else:
+                self.update_treeview({})
+        except Exception as e:
+            self.log_message(f"Error loading classes: {e}")
+
     def run_prediction(self, frame):
         model_name = self.model_var.get()
         if not model_name:
@@ -1302,11 +1405,26 @@ class PredictionApp:
             mod = importlib.import_module(module_path)
             if hasattr(mod, "predict_frame"):
                 result = mod.predict_frame(frame)
+                if isinstance(result, dict):
+                    if "error" in result:
+                        self.log_message(result["error"])
+                        self.root.after(0, lambda: self.pred_result_var.set("Error - Check Logs"))
+                    else:
+                        top_class = result.get("top_class", "UNKNOWN")
+                        probs = result.get("probabilities", {})
+                        self.root.after(0, lambda: self.pred_result_var.set(top_class))
+                        self.root.after(0, lambda: self.update_treeview(probs))
+                else:
+                    if isinstance(result, str) and ("failed" in result.lower() or "error" in result.lower()):
+                        self.log_message(result)
+                        result = "Error - Check Logs"
+                    self.root.after(0, lambda r=result: self.pred_result_var.set(r))
             else:
-                result = "Model doesn't support predict_frame()"
-            self.root.after(0, lambda r=result: self.pred_result_var.set(r))
+                self.log_message("Model doesn't support predict_frame()")
+                self.root.after(0, lambda: self.pred_result_var.set("Error - Check Logs"))
         except Exception as e:
-            self.root.after(0, lambda err=e: self.pred_result_var.set(f"Error: {err}"))
+            self.log_message(f"Error: {e}")
+            self.root.after(0, lambda: self.pred_result_var.set("Error - Check Logs"))
 
     def video_loop(self):
         prev_time = time.time()
@@ -1714,34 +1832,39 @@ class PredictionApp:
             # --- Trigger UI updates on the main thread (pass heatmap directly) ---
             
             # --- CONTINUOUS PREDICTION ---
-            if getattr(self, 'continuous_pred_var', None) and self.continuous_pred_var.get():
-                curr_t = time.time()
-                if curr_t - getattr(self, 'last_pred_time', 0) >= getattr(self, 'pred_interval', 0.5):
-                    self.last_pred_time = curr_t
-                    src_type = self.frame_source_var.get()
-                    pred_frame = None
-                    if src_type == "Raw Frame":
-                        pred_frame = frame
-                    elif src_type == "Heatmap (2D Height)":
-                        pred_frame = heatmap_blended
-                    elif src_type == "Flow":
-                        pred_frame = deform_frame
-                    elif src_type == "Contact Mask":
-                        pred_frame = mask_cleaned
-                    
-                    if pred_frame is not None:
-                        try:
-                            thresh = self.pred_threshold.get()
-                        except Exception:
-                            thresh = 100
-                            
-                        if getattr(self, 'current_contact_area', 0) >= thresh:
-                            # Copy frame for thread safety
-                            pf_copy = pred_frame.copy()
-                            # Run in background thread to avoid blocking video loop
-                            threading.Thread(target=self.run_prediction, args=(pf_copy,), daemon=True).start()
-                        else:
-                            self.root.after(0, lambda: self.pred_result_var.set("NO OBJECT"))
+            curr_t = time.time()
+            if curr_t - getattr(self, 'last_pred_time', 0) >= getattr(self, 'pred_interval', 0.5):
+                self.last_pred_time = curr_t
+                src_type = self.frame_source_var.get()
+                pred_frame = None
+                if src_type == "Raw Frame":
+                    pred_frame = frame
+                elif src_type == "Heatmap (2D Height)":
+                    pred_frame = heatmap_blended
+                elif src_type == "Flow":
+                    pred_frame = deform_frame
+                elif src_type == "Contact Mask":
+                    pred_frame = mask_cleaned
+                
+                if pred_frame is not None:
+                    try:
+                        thresh = self.pred_threshold.get()
+                    except Exception:
+                        thresh = 100
+                        
+                    if getattr(self, 'current_contact_area', 0) >= thresh:
+                        # Copy frame for thread safety
+                        pf_copy = pred_frame.copy()
+                        # Run in background thread to avoid blocking video loop
+                        threading.Thread(target=self.run_prediction, args=(pf_copy,), daemon=True).start()
+                    else:
+                        self.root.after(0, lambda: self.pred_result_var.set("NO OBJECT"))
+                        def reset_probs():
+                            for item in self.tree_probs.get_children():
+                                vals = self.tree_probs.item(item, 'values')
+                                if vals:
+                                    self.tree_probs.item(item, values=(vals[0], "0.0%"))
+                        self.root.after(0, reset_probs)
 
 
             self.root.after(0, self.update_ui_frames, frame, heatmap_blended, deform_frame)
@@ -1760,10 +1883,11 @@ class PredictionApp:
             panel_w, panel_h = 420, 310
             
             # Raw Stream Render
-            raw_rgb = cv2.cvtColor(cv2.resize(raw, (panel_w, panel_h)), cv2.COLOR_BGR2RGB)
-            raw_pil = ImageTk.PhotoImage(image=Image.fromarray(raw_rgb))
-            self.lbl_raw.config(image=raw_pil)
-            self.lbl_raw.image = raw_pil
+            if self.enable_raw_var.get():
+                raw_rgb = cv2.cvtColor(cv2.resize(raw, (panel_w, panel_h)), cv2.COLOR_BGR2RGB)
+                raw_pil = ImageTk.PhotoImage(image=Image.fromarray(raw_rgb))
+                self.lbl_raw.config(image=raw_pil)
+                self.lbl_raw.image = raw_pil
             
             # Difference / Heatmap Render
             if diff is not None:
@@ -1808,7 +1932,7 @@ class PredictionApp:
                     self.popout_ax.set_facecolor("#ffffff")
                     self.popout_ax.text2D(0.5, 0.5, "Feature Disabled\\n(Saves Memory & CPU)", transform=self.popout_ax.transAxes, ha='center', va='center', color='#495057')
                     self.popout_canvas.draw()
-            elif self.display_3d_var.get() and hasattr(self, 'Z_plot'):
+            elif hasattr(self, 'Z_plot'):
                 res = self.grid_res.get()
                 grid_w = res
                 grid_h = int(res * raw.shape[0] / raw.shape[1])
@@ -1862,7 +1986,7 @@ class PredictionApp:
         """Opens a folder selection dialog to set the base dataset folder."""
         initial_dir = self.dataset_dir_var.get()
         if not os.path.exists(initial_dir):
-            initial_dir = os.path.dirname(os.path.dirname(__file__))
+            initial_dir = os.path.dirname(__file__)
         selected = filedialog.askdirectory(initial_dir=initial_dir, title="Select Base Dataset Directory")
         if selected:
             selected_abs = os.path.abspath(selected)

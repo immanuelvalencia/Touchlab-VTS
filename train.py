@@ -19,7 +19,7 @@ def setup_argparse():
     parser.add_argument('--epochs', type=int, default=20, help='Number of epochs to train.')
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size for training and validation.')
     parser.add_argument('--lr', type=float, default=0.001, help='Learning rate.')
-    parser.add_argument('--output_dir', type=str, default='models', help='Directory to save the trained model weights.')
+    parser.add_argument('--output_dir', type=str, default='train', help='Directory to save the trained model weights.')
     parser.add_argument('--patience', type=int, default=5, help='Patience for early stopping (number of epochs with no improvement before stopping).')
     return parser.parse_args()
 
