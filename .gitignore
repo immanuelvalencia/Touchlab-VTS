@@ -1,4 +1,9 @@
 *.pth
+*.py[cod]
+__pycache__/
+.pytest_cache/
+.coverage
+htmlcov/
 models/
 ml_dataset/
 dataset/

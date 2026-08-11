@@ -1,12 +1,13 @@
 import os
 import shutil
-import random
 import json
 import threading
 from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from PIL import Image
+
+from tools.dataset_splitting import DatasetRecord, grouped_split, metadata_group_id
 
 class ExportApp:
     def __init__(self, root):
@@ -61,6 +62,14 @@ class ExportApp:
         ttk.Entry(split_frame, textvariable=self.train_var, width=5).pack(side=tk.LEFT, padx=5)
         ttk.Entry(split_frame, textvariable=self.val_var, width=5).pack(side=tk.LEFT, padx=5)
         ttk.Entry(split_frame, textvariable=self.test_var, width=5).pack(side=tk.LEFT, padx=5)
+        
+        # Categorization
+        cat_frame = ttk.Frame(settings_frame)
+        cat_frame.pack(fill=tk.X, pady=5)
+        ttk.Label(cat_frame, text="Categorize By:").pack(side=tk.LEFT)
+        self.category_var = tk.StringVar(value="label")
+        ttk.Radiobutton(cat_frame, text="Label", variable=self.category_var, value="label", command=self.scan_directory).pack(side=tk.LEFT, padx=5)
+        ttk.Radiobutton(cat_frame, text="Local Feature", variable=self.category_var, value="local_feature", command=self.scan_directory).pack(side=tk.LEFT, padx=5)
         
         # Feature Suffix
         feat_frame = ttk.Frame(settings_frame)
@@ -144,6 +153,8 @@ class ExportApp:
         else:
             metadata_files = list(input_path.glob("*metadata.json"))
 
+        category_by = self.category_var.get()
+
         for meta_file in metadata_files:
             try:
                 with open(meta_file, "r", encoding="utf-8") as f:
@@ -154,7 +165,12 @@ class ExportApp:
             if not include_video and meta.get("is_video_sequence", False):
                 continue
                 
-            label = meta.get("label", "Unknown")
+            if category_by == "local_feature":
+                custom_fields = meta.get("custom_fields", {})
+                label = custom_fields.get("local_feature", "Unknown")
+            else:
+                label = meta.get("label", "Unknown")
+                
             saved_features = meta.get("saved_features", [])
             
             target_file = None
@@ -167,18 +183,37 @@ class ExportApp:
                 if label not in self.label_to_files:
                     self.label_to_files[label] = []
                 sensor_prefix = meta.get("sensor", "UnknownSensor")
-                self.label_to_files[label].append((target_file, sensor_prefix))
+                self.label_to_files[label].append(
+                    DatasetRecord(
+                        source_file=target_file,
+                        sensor_prefix=sensor_prefix,
+                        group_id=metadata_group_id(meta_file, meta),
+                    )
+                )
 
         self.update_class_list()
         self.update_preview()
         
         total_files = sum(len(files) for files in self.label_to_files.values())
         self.status_var.set(f"Found {total_files} valid files across {len(self.label_to_files)} classes.")
+        
+        # Export labels to labels.txt in the input directory immediately after scanning
+        try:
+            labels_path = input_path / "labels.txt"
+            with open(labels_path, "w") as f:
+                for label in sorted(self.label_to_files.keys()):
+                    f.write(f"{label}\n")
+        except Exception as e:
+            print(f"Failed to write labels.txt to input directory: {e}")
 
     def update_class_list(self):
         self.class_listbox.delete(0, tk.END)
         for label, files in sorted(self.label_to_files.items()):
-            self.class_listbox.insert(tk.END, f"{label} ({len(files)} files)")
+            group_count = len({record.group_id for record in files})
+            self.class_listbox.insert(
+                tk.END,
+                f"{label} ({len(files)} files, {group_count} acquisition groups)",
+            )
 
     def update_preview(self):
         self.preview_text.config(state=tk.NORMAL)
@@ -257,19 +292,29 @@ class ExportApp:
         total_operations = total_files_to_copy * operations_per_file
         
         processed_ops = 0
+        split_manifest = {
+            "schema_version": 1,
+            "grouping": "acquisition",
+            "seed": 42,
+            "ratios": {
+                "train": self.train_var.get(),
+                "val": self.val_var.get(),
+                "test": self.test_var.get(),
+            },
+            "classes": {},
+        }
 
         for label, files_list in self.label_to_files.items():
-            random.seed(42) # Consistent splitting
-            random.shuffle(files_list)
-            
-            total_files = len(files_list)
-            train_idx = int(total_files * self.train_var.get())
-            val_idx = train_idx + int(total_files * self.val_var.get())
-            
-            splits = {
-                'train': files_list[:train_idx],
-                'val': files_list[train_idx:val_idx],
-                'test': files_list[val_idx:]
+            splits = grouped_split(
+                files_list,
+                train_ratio=self.train_var.get(),
+                val_ratio=self.val_var.get(),
+                test_ratio=self.test_var.get(),
+                seed=42,
+            )
+            split_manifest["classes"][label] = {
+                split_name: sorted({record.group_id for record in subset})
+                for split_name, subset in splits.items()
             }
             
             for split_name, subset in splits.items():
@@ -279,7 +324,9 @@ class ExportApp:
                 target_dir = output_path / split_name / label
                 os.makedirs(target_dir, exist_ok=True)
                 
-                for src_file, sensor_prefix in subset:
+                for record in subset:
+                    src_file = record.source_file
+                    sensor_prefix = record.sensor_prefix
                     # Base File
                     base_name = f"{sensor_prefix}_{src_file.name}"
                     dst_file = target_dir / base_name
@@ -314,6 +361,23 @@ class ExportApp:
                     self.root.after(0, self.progress_var.set, progress_pct)
                     self.root.after(0, self.status_var.set, f"Exporting... {progress_pct:.1f}%")
 
+        labels = sorted(list(self.label_to_files.keys()))
+        labels_file = output_path / "labels.txt"
+        try:
+            with open(labels_file, "w") as f:
+                for label in labels:
+                    f.write(f"{label}\n")
+        except Exception as e:
+            print(f"Failed to write labels.txt: {e}")
+
+        manifest_path = output_path / "split_manifest.json"
+        try:
+            with open(manifest_path, "w", encoding="utf-8") as handle:
+                json.dump(split_manifest, handle, indent=4)
+                handle.write("\n")
+        except Exception as e:
+            print(f"Failed to write split manifest: {e}")
+            
         self.root.after(0, self.finish_export, "Export Completed Successfully!")
 
     def finish_export(self, message):

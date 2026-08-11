@@ -12,20 +12,6 @@ import threading
 import time
 import os
 import json
-import importlib
-import sys
-import pathlib
-
-# Add the root directory to sys.path so 'models' can be found
-_root_dir = os.path.dirname(os.path.abspath(__file__))
-if _root_dir not in sys.path:
-    sys.path.insert(0, _root_dir)
-
-from algorithms.registry import get_algorithm_by_display_name, get_algorithm_specs
-
-MODEL_MODULES = {
-    "ResNet-18": "models.resnet18",
-}
 
 # --- Fast Poisson Solver using 2D DST-I ---
 def solve_poisson_dst(gx, gy):
@@ -58,10 +44,10 @@ def solve_poisson_dst(gx, gy):
     u = idst(idst(u_dst, type=1, axis=0, norm='ortho'), type=1, axis=1, norm='ortho')
     return u
 
-class PredictionApp:
+class DatasetLabelingApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("TouchLab VTS")
+        self.root.title("TouchLab  VTS")
         self.root.geometry("1300x840")
         self.root.configure(bg="#f8f9fa")
         
@@ -85,6 +71,7 @@ class PredictionApp:
                 default_source = src
                 break
         self.source_var = tk.StringVar(value=default_source)
+        self.display_3d_var = tk.BooleanVar(value=True)
         self.invert_depth_var = tk.BooleanVar(value=False)
         
         # Sliders state variables
@@ -154,11 +141,9 @@ class PredictionApp:
         self.status_var = tk.StringVar(value="Status: Ready")
         
         # Feature Toggles
-        self.enable_raw_var = tk.BooleanVar(value=True)
         self.enable_heatmap_var = tk.BooleanVar(value=True)
         self.enable_flow_var = tk.BooleanVar(value=True)
         self.enable_reconstruction_var = tk.BooleanVar(value=True)
-        self.layout_cols_var = tk.StringVar(value="Auto")
 
         self.custom_fields = []
         self.custom_field_vars = {}
@@ -168,8 +153,6 @@ class PredictionApp:
         # Sequence Recording state
         self.capture_mode_var = tk.StringVar(value="Image")
         self.auto_capture_threshold = tk.IntVar(value=500)
-        self.prediction_threshold = tk.IntVar(value=100)
-        self.prediction_timer_seconds = tk.DoubleVar(value=3.0)
         self.auto_capture_armed_var = tk.BooleanVar(value=False)
         self.is_recording_sequence = False
         self.current_sequence_dir = ""
@@ -481,36 +464,6 @@ class PredictionApp:
             else:
                 self.source_var.set("")
 
-    def show_main_view(self, view_name):
-        if view_name not in self.main_views:
-            return
-        for name, frame in self.main_views.items():
-            frame.pack_forget()
-            button = self.main_nav_buttons.get(name)
-            if button is not None:
-                button.config(
-                    bg="#ffffff",
-                    fg="#495057",
-                    relief=tk.FLAT,
-                )
-        self.main_views[view_name].pack(fill=tk.BOTH, expand=True)
-        self.main_nav_buttons[view_name].config(
-            bg="#007bff",
-            fg="#ffffff",
-            relief=tk.FLAT,
-        )
-        self.active_main_view = view_name
-        if hasattr(self, "sidebar_canvas"):
-            self.sidebar_canvas.yview_moveto(0)
-
-    def open_settings_window(self):
-        self.settings_window.deiconify()
-        self.settings_window.lift()
-        self.settings_window.focus_force()
-
-    def hide_settings_window(self):
-        self.settings_window.withdraw()
-
     def create_widgets(self):
         # Master Frame
         main_frame = tk.Frame(self.root, bg="#f8f9fa")
@@ -521,112 +474,12 @@ class PredictionApp:
         sidebar_container.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
         sidebar_container.pack_propagate(False)
         
-        title_lbl = tk.Label(
-            sidebar_container,
-            text="TouchLab VTS",
-            font=("Segoe UI", 14, "bold"),
-            bg="#ffffff",
-            fg="#212529",
-        )
-        title_lbl.pack(anchor=tk.W, padx=14, pady=(12, 8))
-
-        nav_bar = tk.Frame(sidebar_container, bg="#e9ecef", padx=4, pady=4)
-        nav_bar.pack(fill=tk.X, padx=10, pady=(0, 8))
-        for column in range(4):
-            nav_bar.columnconfigure(column, weight=1, uniform="main_nav")
-        self.main_nav_buttons = {}
-        for column, (name, label) in enumerate(
-            (("predict", "Predict"), ("multi", "Multi Touch"), ("compare", "Compare"))
-        ):
-            button = tk.Button(
-                nav_bar,
-                text=label,
-                bg="#ffffff",
-                fg="#495057",
-                activebackground="#007bff",
-                activeforeground="#ffffff",
-                relief=tk.FLAT,
-                bd=0,
-                padx=5,
-                pady=7,
-                font=("Segoe UI", 9, "bold"),
-                command=lambda selected=name: self.show_main_view(selected),
-            )
-            button.grid(row=0, column=column, sticky="ew", padx=1)
-            self.main_nav_buttons[name] = button
-        tk.Button(
-            nav_bar,
-            text="Settings",
-            bg="#ffffff",
-            fg="#495057",
-            activebackground="#e9ecef",
-            activeforeground="#212529",
-            relief=tk.FLAT,
-            bd=0,
-            padx=5,
-            pady=7,
-            font=("Segoe UI", 9, "bold"),
-            command=self.open_settings_window,
-        ).grid(row=0, column=3, sticky="ew", padx=1)
-
-        model_selector = tk.LabelFrame(
-            sidebar_container,
-            text="AI Model",
-            bg="#ffffff",
-            fg="#007bff",
-            font=("Segoe UI", 9, "bold"),
-            padx=8,
-            pady=7,
-        )
-        model_selector.pack(fill=tk.X, padx=10, pady=(0, 8))
-        model_selector.columnconfigure(1, weight=1)
-        self.arch_var = tk.StringVar(value="ResNet-18")
-        self.model_var = tk.StringVar()
-        tk.Label(
-            model_selector,
-            text="Architecture",
-            bg="#ffffff",
-            fg="#495057",
-            font=("Segoe UI", 8),
-        ).grid(row=0, column=0, sticky=tk.W, padx=(0, 8), pady=(0, 5))
-        self.cb_arch = ttk.Combobox(
-            model_selector,
-            textvariable=self.arch_var,
-            values=["ResNet-18"],
-            state="readonly",
-            width=15,
-        )
-        self.cb_arch.grid(row=0, column=1, columnspan=2, sticky="ew", pady=(0, 5))
-        self.cb_arch.bind("<<ComboboxSelected>>", self.on_model_selected)
-        tk.Label(
-            model_selector,
-            text="Weights",
-            bg="#ffffff",
-            fg="#495057",
-            font=("Segoe UI", 8),
-        ).grid(row=1, column=0, sticky=tk.W, padx=(0, 8))
-        tk.Entry(
-            model_selector,
-            textvariable=self.model_var,
-            state="readonly",
-            bg="#f8f9fa",
-            relief=tk.FLAT,
-            font=("Segoe UI", 8),
-        ).grid(row=1, column=1, sticky="ew")
-        tk.Button(
-            model_selector,
-            text="Browse",
-            bg="#e9ecef",
-            fg="#495057",
-            relief=tk.FLAT,
-            bd=0,
-            command=self.browse_weights,
-            width=8,
-        ).grid(row=1, column=2, padx=(6, 0))
+        # Title Label is static at the top of the container
+        title_lbl = tk.Label(sidebar_container, text="DATASET CONTROLS", font=("Segoe UI", 13, "bold"), bg="#ffffff", fg="#007bff")
+        title_lbl.pack(anchor=tk.W, padx=15, pady=(10, 5))
         
         # Scrollable Canvas
         canvas = tk.Canvas(sidebar_container, bg="#ffffff", highlightthickness=0)
-        self.sidebar_canvas = canvas
         scrollbar = ttk.Scrollbar(sidebar_container, orient=tk.VERTICAL, command=canvas.yview)
         
         scrollable_frame = tk.Frame(canvas, bg="#ffffff")
@@ -636,13 +489,7 @@ class PredictionApp:
         )
         
         # Create canvas window
-        canvas_window = canvas.create_window(
-            (0, 0), window=scrollable_frame, anchor="nw"
-        )
-        canvas.bind(
-            "<Configure>",
-            lambda event: canvas.itemconfigure(canvas_window, width=event.width),
-        )
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw", width=300)
         canvas.configure(yscrollcommand=scrollbar.set)
         
         # Pack scrolling components
@@ -659,52 +506,21 @@ class PredictionApp:
         self.style.configure("TNotebook.Tab", background="#e9ecef", foreground="#495057", padding=[8, 3], font=("Segoe UI", 9, "bold"))
         self.style.map("TNotebook.Tab", background=[("selected", "#ffffff")], foreground=[("selected", "#007bff")])
         
-        tab_prediction = tk.Frame(scrollable_frame, bg="#ffffff")
-        tab_multi_prediction = tk.Frame(scrollable_frame, bg="#ffffff")
-        tab_comparison = tk.Frame(scrollable_frame, bg="#ffffff")
-        self.tab_multi_prediction = tab_multi_prediction
-        self.tab_comparison = tab_comparison
-
-        self.main_views = {
-            "predict": tab_prediction,
-            "multi": tab_multi_prediction,
-            "compare": tab_comparison,
-        }
-        self.active_main_view = "predict"
-
-        self.settings_window = tk.Toplevel(self.root)
-        self.settings_window.title("TouchLab VTS Settings")
-        self.settings_window.geometry("780x760")
-        self.settings_window.minsize(680, 620)
-        self.settings_window.configure(bg="#f8f9fa")
-        self.settings_window.transient(self.root)
-        self.settings_window.protocol("WM_DELETE_WINDOW", self.hide_settings_window)
-        self.settings_window.withdraw()
-
-        settings_header = tk.Frame(self.settings_window, bg="#ffffff")
-        settings_header.pack(fill=tk.X)
-        tk.Label(
-            settings_header,
-            text="Settings",
-            font=("Segoe UI", 16, "bold"),
-            bg="#ffffff",
-            fg="#212529",
-            padx=18,
-            pady=14,
-        ).pack(side=tk.LEFT)
-
-        settings_footer = tk.Frame(self.settings_window, bg="#ffffff", padx=14, pady=10)
-        settings_footer.pack(side=tk.BOTTOM, fill=tk.X)
-        tk.Label(
-            settings_footer,
-            textvariable=self.status_var,
-            bg="#ffffff",
-            fg="#6c757d",
-            font=("Segoe UI", 9),
-        ).pack(side=tk.LEFT)
-
-        notebook = ttk.Notebook(self.settings_window)
-        notebook.pack(fill=tk.BOTH, expand=True, padx=14, pady=(12, 8))
+        # Top-level notebook
+        self.top_notebook = ttk.Notebook(scrollable_frame)
+        self.top_notebook.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        
+        # Create Data Gathering and Calibration frames
+        tab_data_gathering = tk.Frame(self.top_notebook, bg="#ffffff")
+        self.top_notebook.add(tab_data_gathering, text="Data Gathering")
+        
+        
+        tab_calibration = tk.Frame(self.top_notebook, bg="#ffffff")
+        self.top_notebook.add(tab_calibration, text="Settings")
+        
+        # Inner notebook (inside tab_calibration)
+        notebook = ttk.Notebook(tab_calibration)
+        notebook.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
         
         # Tab 1: Setup & Filter
         tab_setup = tk.Frame(notebook, bg="#ffffff")
@@ -717,269 +533,82 @@ class PredictionApp:
         # Tab 3: Diff / Contact Calib
         tab_contact = tk.Frame(notebook, bg="#ffffff")
         notebook.add(tab_contact, text="Contact")
-
-        # Tab 4: Prediction capture
-        tab_prediction_settings = tk.Frame(notebook, bg="#ffffff")
-        notebook.add(tab_prediction_settings, text="Prediction")
         
-        # Tab 5: Height Calib
+        # Tab 4: Height Calib
         tab_height = tk.Frame(notebook, bg="#ffffff")
         notebook.add(tab_height, text="Height")
-
-        prediction_capture_frame = tk.LabelFrame(
-            tab_prediction_settings,
-            text="Touch Capture",
-            bg="#ffffff",
-            fg="#007bff",
-            font=("Segoe UI", 9, "bold"),
-            padx=8,
-            pady=8,
-        )
-        prediction_capture_frame.pack(fill=tk.X, pady=8)
-        tk.Label(
-            prediction_capture_frame,
-            text="Prediction Threshold (px):",
-            bg="#ffffff",
-            fg="#495057",
-            font=("Segoe UI", 9),
-        ).grid(row=0, column=0, sticky=tk.W, pady=3)
-        tk.Entry(
-            prediction_capture_frame,
-            textvariable=self.prediction_threshold,
-            font=("Segoe UI", 9),
-            width=10,
-            bg="#f8f9fa",
-            relief=tk.FLAT,
-        ).grid(row=0, column=1, padx=8, pady=3, sticky=tk.W)
-        tk.Label(
-            prediction_capture_frame,
-            text="Touch Timer (s):",
-            bg="#ffffff",
-            fg="#495057",
-            font=("Segoe UI", 9),
-        ).grid(row=1, column=0, sticky=tk.W, pady=3)
-        tk.Entry(
-            prediction_capture_frame,
-            textvariable=self.prediction_timer_seconds,
-            font=("Segoe UI", 9),
-            width=10,
-            bg="#f8f9fa",
-            relief=tk.FLAT,
-        ).grid(row=1, column=1, padx=8, pady=3, sticky=tk.W)
         
-        # --- PREDICTION TAB ---
-        pred_title = tk.Label(tab_prediction, text="Inference Engine", font=("Segoe UI", 11, "bold"), bg="#ffffff", fg="#007bff")
-        pred_title.pack(anchor=tk.W, pady=(10, 5))
-
-        # Frame source
-        tk.Label(tab_prediction, text="Input Frame Source:", bg="#ffffff", fg="#495057", font=("Segoe UI", 9, "bold")).pack(anchor=tk.W, pady=(5, 0))
-        self.frame_source_var = tk.StringVar(value="Raw Frame")
-        self.cb_frame_src = ttk.Combobox(tab_prediction, textvariable=self.frame_source_var, values=["Raw Frame", "Heatmap (2D Height)", "Flow", "Contact Mask"], state="readonly")
-        self.cb_frame_src.pack(fill=tk.X, pady=(2, 8))
-
-        # Result Display
-        self.pred_result_var = tk.StringVar(value="Waiting...")
-        self.lbl_result = tk.Label(tab_prediction, textvariable=self.pred_result_var, font=("Segoe UI", 16, "bold"), bg="#007bff", fg="#ffffff", pady=15)
-        self.lbl_result.pack(fill=tk.X, pady=(10, 5))
-
-        # Class Probabilities Table
-        tk.Label(tab_prediction, text="Class Probabilities:", bg="#ffffff", fg="#495057", font=("Segoe UI", 9, "bold")).pack(anchor=tk.W, pady=(5, 0))
-        self.tree_probs = ttk.Treeview(tab_prediction, columns=("Class", "Probability"), show="headings", height=5)
-        self.tree_probs.heading("Class", text="Class")
-        self.tree_probs.heading("Probability", text="Probability (%)")
-        self.tree_probs.column("Class", width=120)
-        self.tree_probs.column("Probability", width=100, anchor=tk.E)
-        self.tree_probs.pack(fill=tk.X, pady=(0, 10))
+        # --- DATA GATHERING TAB ---
+        gathering_title = tk.Label(tab_data_gathering, text="Dataset Gathering", font=("Segoe UI", 11, "bold"), bg="#ffffff", fg="#007bff")
+        gathering_title.pack(anchor=tk.W, pady=(10, 5))
         
-        self.root.after(100, self.on_model_selected)
+        # Base Directory
+        tk.Label(tab_data_gathering, text="Base Dataset Folder:", bg="#ffffff", fg="#495057", font=("Segoe UI", 9, "bold")).pack(anchor=tk.W, pady=(5, 0))
+        dir_frame = tk.Frame(tab_data_gathering, bg="#ffffff")
+        dir_frame.pack(fill=tk.X, pady=(2, 8))
+        self.ent_dataset_dir = tk.Entry(dir_frame, textvariable=self.dataset_dir_var, font=("Segoe UI", 9), bg="#f1f3f5", relief=tk.FLAT)
+        self.ent_dataset_dir.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=3)
+        self.btn_browse_dir = tk.Button(dir_frame, text="...", bg="#e9ecef", fg="#495057", font=("Segoe UI", 9, "bold"), relief=tk.FLAT, bd=0, command=self.browse_dataset_dir)
+        self.btn_browse_dir.pack(side=tk.RIGHT, padx=(5, 0))
+        
+        # Label Input (Combobox for selectable tags)
+        tk.Label(tab_data_gathering, text="Shape / Object Label:", bg="#ffffff", fg="#495057", font=("Segoe UI", 9, "bold")).pack(anchor=tk.W, pady=(5, 0))
+        self.ent_label = ttk.Combobox(tab_data_gathering, textvariable=self.label_var, font=("Segoe UI", 10), state="normal")
+        self.ent_label.pack(fill=tk.X, pady=(2, 8))
+        self.ent_label.bind("<<ComboboxSelected>>", self.on_label_select)
+        self.ent_label.bind("<KeyRelease>", self.update_sample_count_display)
+        
+        # Capture Mode Selection
+        mode_frame = tk.Frame(tab_data_gathering, bg="#ffffff")
+        mode_frame.pack(fill=tk.X, pady=(5, 5))
+        tk.Label(mode_frame, text="Capture Mode:", bg="#ffffff", fg="#495057", font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT)
+        tk.Radiobutton(mode_frame, text="Single Image", variable=self.capture_mode_var, value="Image", bg="#ffffff", command=self.on_capture_mode_change).pack(side=tk.LEFT, padx=10)
+        tk.Radiobutton(mode_frame, text="Video Sequence", variable=self.capture_mode_var, value="Video", bg="#ffffff", command=self.on_capture_mode_change).pack(side=tk.LEFT)
 
-        # Logs Section
-        tk.Label(tab_prediction, text="Logs:", bg="#ffffff", fg="#495057", font=("Segoe UI", 9, "bold")).pack(anchor=tk.W, pady=(5, 0))
-        self.txt_logs = tk.Text(tab_prediction, height=8, bg="#f8f9fa", font=("Consolas", 8), state=tk.DISABLED)
-        self.txt_logs.pack(fill=tk.BOTH, expand=True, pady=5)
+        # Video Sequence Controls
+        self.action_container = tk.Frame(tab_data_gathering, bg="#ffffff")
+        self.action_container.pack(fill=tk.X, pady=(5, 5))
+        self.video_controls_frame = tk.Frame(self.action_container, bg="#f8f9fa", padx=5, pady=5)
+        thresh_frame = tk.Frame(self.video_controls_frame, bg="#f8f9fa")
+        thresh_frame.pack(fill=tk.X, pady=2)
+        tk.Label(thresh_frame, text="Auto-Trigger Threshold (px):", bg="#f8f9fa", fg="#495057", font=("Segoe UI", 9)).pack(side=tk.LEFT)
+        tk.Entry(thresh_frame, textvariable=self.auto_capture_threshold, font=("Segoe UI", 9), width=10, bg="#ffffff", relief=tk.FLAT).pack(side=tk.RIGHT)
+        self.btn_arm_capture = tk.Button(self.video_controls_frame, text="ARM AUTO-CAPTURE", bg="#ffc107", fg="black", font=("Segoe UI", 9, "bold"), relief=tk.FLAT, bd=0, command=self.toggle_arm_capture)
+        self.btn_arm_capture.pack(fill=tk.X, pady=(5, 0))
 
-        # --- MULTI TOUCH PREDICTION TAB ---
-        multi_title = tk.Label(tab_multi_prediction, text="Multi Touch Inference", font=("Segoe UI", 11, "bold"), bg="#ffffff", fg="#28a745")
-        multi_title.pack(anchor=tk.W, pady=(10, 5))
+        # Custom Fields Container
+        self.custom_fields_container = tk.Frame(tab_data_gathering, bg="#ffffff")
+        self.custom_fields_container.pack(fill=tk.X, pady=(5, 5))
+        self.btn_config_custom_fields = tk.Button(tab_data_gathering, text="Configure Custom Fields", bg="#e9ecef", fg="#495057", font=("Segoe UI", 8, "bold"), relief=tk.FLAT, bd=0, command=self.open_custom_fields_dialog)
+        self.btn_config_custom_fields.pack(anchor=tk.E, pady=(0, 5))
+        self.render_custom_fields_ui()
 
-        # Shape Algorithm Selection
-        tk.Label(tab_multi_prediction, text="Shape Algorithm:", bg="#ffffff", fg="#495057", font=("Segoe UI", 9, "bold")).pack(anchor=tk.W, pady=(5, 0))
-        self.algorithm_specs = get_algorithm_specs()
-        if not self.algorithm_specs:
-            raise RuntimeError("No shape algorithms are registered")
-        algorithm_names = [spec.display_name for spec in self.algorithm_specs]
-        self.shape_algo_var = tk.StringVar(value=algorithm_names[0])
-        self.cb_shape_algo = ttk.Combobox(
-            tab_multi_prediction,
-            textvariable=self.shape_algo_var,
-            values=algorithm_names,
-            state="readonly",
-        )
-        self.cb_shape_algo.pack(fill=tk.X, pady=(2, 8))
-        self.cb_shape_algo.bind("<<ComboboxSelected>>", self.on_shape_algo_selected)
-        self.shape_algo_spec = self.algorithm_specs[0]
-        self.shape_algo = self.shape_algo_spec.create()
+        # Save Action Button
+        self.btn_save_sample = tk.Button(self.action_container, text="SAVE DATA SAMPLE", bg="#28a745", fg="white", font=("Segoe UI", 10, "bold"), relief=tk.FLAT, bd=0, command=self.save_data_point, height=2)
+        
+        # Statistics / Current Info display
+        self.stats_frame = tk.LabelFrame(tab_data_gathering, text="Dataset Status", bg="#ffffff", fg="#007bff", font=("Segoe UI", 9, "bold"), padx=10, pady=8)
+        self.stats_frame.pack(fill=tk.BOTH, expand=True, pady=(5, 10))
+        
+        self.lbl_last_saved = tk.Label(self.stats_frame, text="Last Saved: None", bg="#ffffff", fg="#6c757d", font=("Segoe UI", 8, "bold"), wraplength=260, justify=tk.LEFT)
+        self.lbl_last_saved.pack(anchor=tk.W, pady=2)
+        
+        self.lbl_sample_count = tk.Label(self.stats_frame, text="Selected Label Samples: 0", bg="#ffffff", fg="#495057", font=("Segoe UI", 9))
+        self.lbl_sample_count.pack(anchor=tk.W, pady=2)
 
-        # Status Display
-        self.multi_status_var = tk.StringVar(value="Waiting for Object...")
-        self.lbl_multi_status = tk.Label(tab_multi_prediction, textvariable=self.multi_status_var, font=("Segoe UI", 12, "bold"), bg="#e9ecef", fg="#495057", pady=10, wraplength=280)
-        self.lbl_multi_status.pack(fill=tk.X, pady=(10, 5))
-
-        # Global Shape Prediction
-        self.global_shape_var = tk.StringVar(value="Global Shape: Unknown (0%)")
-        self.lbl_global_shape = tk.Label(tab_multi_prediction, textvariable=self.global_shape_var, font=("Segoe UI", 12, "bold"), bg="#007bff", fg="#ffffff", pady=10, wraplength=280)
-        self.lbl_global_shape.pack(fill=tk.X, pady=(5, 5))
-
-        # Reset Button
-        self.btn_reset_multi = tk.Button(tab_multi_prediction, text="Reset Trial", bg="#dc3545", fg="white", font=("Segoe UI", 10, "bold"), relief=tk.FLAT, command=self.reset_multi_trial)
-        self.btn_reset_multi.pack(fill=tk.X, pady=(5, 10))
-
-        # Touch History Table
-        tk.Label(tab_multi_prediction, text="Touch History:", bg="#ffffff", fg="#495057", font=("Segoe UI", 9, "bold")).pack(anchor=tk.W, pady=(5, 0))
-        self.tree_multi = ttk.Treeview(tab_multi_prediction, columns=("Touch", "Prediction"), show="headings", height=8)
-        self.tree_multi.heading("Touch", text="Touch #")
-        self.tree_multi.heading("Prediction", text="Prediction")
-        self.tree_multi.column("Touch", width=60, anchor=tk.CENTER)
-        self.tree_multi.column("Prediction", width=120, anchor=tk.W)
-        self.tree_multi.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
-
-        # State Variables
-        self.multi_timer_active = False
-        self.multi_timer_start = 0
-        self.multi_touch_counter = 0
-        self.multi_waiting_for_removal = False
-        self.multi_trial_stopped = False
-
-        # --- SHAPE COMPARISON TAB ---
-        compare_title = tk.Label(tab_comparison, text="Compare Shape Algorithms", font=("Segoe UI", 11, "bold"), bg="#ffffff", fg="#6f42c1")
-        compare_title.pack(anchor=tk.W, pady=(10, 5))
-
-        tk.Label(tab_comparison, text="Compare Algorithms:", bg="#ffffff", fg="#495057", font=("Segoe UI", 9, "bold")).pack(anchor=tk.W, pady=(5, 0))
-        compare_checks = tk.Frame(tab_comparison, bg="#ffffff")
-        compare_checks.pack(fill=tk.X, pady=(1, 6))
-        self.compare_algorithm_vars = {}
-        for spec in self.algorithm_specs:
-            enabled_var = tk.BooleanVar(value=True)
-            self.compare_algorithm_vars[spec.key] = enabled_var
-            tk.Checkbutton(
-                compare_checks,
-                text=spec.display_name,
-                variable=enabled_var,
-                command=self.reset_compare_trial,
-                bg="#ffffff",
-                fg="#212529",
-                selectcolor="#ffffff",
-                activebackground="#ffffff",
-                activeforeground="#212529",
-            ).pack(anchor=tk.W)
-
-        self.compare_status_var = tk.StringVar(value="Waiting for Object...")
-        compare_action_bar = tk.Frame(tab_comparison, bg="#ffffff")
-        compare_action_bar.pack(fill=tk.X, pady=(8, 5))
-        self.lbl_compare_status = tk.Label(
-            compare_action_bar,
-            textvariable=self.compare_status_var,
-            font=("Segoe UI", 9, "bold"),
-            bg="#e9ecef",
-            fg="#495057",
-            pady=7,
-            padx=8,
-            anchor=tk.W,
-        )
-        self.lbl_compare_status.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        tk.Button(
-            compare_action_bar,
-            text="Reset",
-            bg="#dc3545",
-            fg="white",
-            activebackground="#bb2d3b",
-            activeforeground="#ffffff",
-            font=("Segoe UI", 9, "bold"),
-            relief=tk.FLAT,
-            bd=0,
-            command=self.reset_compare_trial,
-            padx=12,
-            pady=7,
-        ).pack(side=tk.RIGHT, padx=(6, 0))
-
-        results_frame = tk.LabelFrame(
-            tab_comparison,
-            text="Current Results",
-            bg="#ffffff",
-            fg="#007bff",
-            font=("Segoe UI", 9, "bold"),
-            padx=5,
-            pady=5,
-        )
-        results_frame.pack(fill=tk.X, pady=(5, 8))
-        self.tree_compare = ttk.Treeview(
-            results_frame,
-            columns=("Algorithm", "Prediction", "Confidence"),
-            show="headings",
-            height=4,
-        )
-        self.tree_compare.heading("Algorithm", text="Algorithm")
-        self.tree_compare.heading("Prediction", text="Shape")
-        self.tree_compare.heading("Confidence", text="Confidence")
-        self.tree_compare.column("Algorithm", width=105, minwidth=80, anchor=tk.W, stretch=True)
-        self.tree_compare.column("Prediction", width=120, minwidth=90, anchor=tk.W, stretch=True)
-        self.tree_compare.column("Confidence", width=90, minwidth=75, anchor=tk.E, stretch=False)
-        self.tree_compare.tag_configure("accepted", foreground="#198754")
-        self.tree_compare.tag_configure("uncertain", foreground="#b35c00")
-        self.tree_compare.tag_configure("active", foreground="#495057")
-        self.tree_compare.pack(fill=tk.X)
-        self.compare_result_summary_var = tk.StringVar(value="Waiting for first touch")
-        tk.Label(
-            results_frame,
-            textvariable=self.compare_result_summary_var,
-            bg="#f8f9fa",
-            fg="#495057",
-            font=("Segoe UI", 9, "bold"),
-            anchor=tk.W,
-            padx=8,
-            pady=6,
-        ).pack(fill=tk.X, pady=(5, 0))
-
-        details_bar = tk.Frame(tab_comparison, bg="#ffffff")
-        details_bar.pack(fill=tk.X, pady=(5, 10))
-        self.compare_details_summary_var = tk.StringVar(value="No details recorded")
-        tk.Label(
-            details_bar,
-            textvariable=self.compare_details_summary_var,
-            bg="#ffffff",
-            fg="#6c757d",
-            font=("Segoe UI", 8),
-        ).pack(side=tk.LEFT)
-        tk.Button(
-            details_bar,
-            text="Open Details",
-            bg="#007bff",
-            fg="#ffffff",
-            activebackground="#0056b3",
-            activeforeground="#ffffff",
-            relief=tk.FLAT,
-            bd=0,
-            font=("Segoe UI", 9, "bold"),
-            command=self.open_compare_details_window,
-            padx=12,
-            pady=6,
-        ).pack(side=tk.RIGHT)
-
-        self.compare_timer_active = False
-        self.compare_timer_start = 0
-        self.compare_waiting_for_removal = False
-        self.compare_touch_counter = 0
-        self.compare_trial_stopped = False
-        self.compare_algos = {}
-        self.compare_detail_log = []
-        self.compare_details_window = None
-        self.txt_compare_details = None
-        self.reset_compare_trial()
-
-        # Variables for prediction loop
-        self.last_pred_time = 0
-        self.pred_interval = 0.5  # predict every 500ms when continuous
-
+        tk.Label(self.stats_frame, text="All Collected Labels Summary:", bg="#ffffff", fg="#495057", font=("Segoe UI", 9, "bold")).pack(anchor=tk.W, pady=(5, 2))
+        
+        # Scrollable listbox for all labels summary
+        stats_list_frame = tk.Frame(self.stats_frame, bg="#ffffff")
+        stats_list_frame.pack(fill=tk.BOTH, expand=True, pady=(2, 0))
+        
+        self.stats_listbox = tk.Listbox(stats_list_frame, height=5, font=("Segoe UI", 9), bg="#f8f9fa", fg="#212529", relief=tk.FLAT, bd=0, highlightthickness=0)
+        stats_scrollbar = ttk.Scrollbar(stats_list_frame, orient=tk.VERTICAL, command=self.stats_listbox.yview)
+        self.stats_listbox.configure(yscrollcommand=stats_scrollbar.set)
+        
+        self.stats_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        stats_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
         # --- TAB 1: Setup ---
         tk.Label(tab_setup, text="Input Video Source:", bg="#ffffff", fg="#495057", font=("Segoe UI", 9, "bold")).pack(anchor=tk.W, pady=(5, 0))
         
@@ -1008,20 +637,12 @@ class PredictionApp:
         
         self.add_slider(tab_setup, "Mesh Grid Res:", self.grid_res, 20, 80, is_int=True)
         self.add_slider(tab_setup, "Gaussian Filter Size:", self.blur_size, 1, 21, is_int=True)
+        tk.Checkbutton(tab_setup, text="Enable 3D Render", variable=self.display_3d_var, bg="#ffffff", fg="#212529", selectcolor="#ffffff", activebackground="#ffffff", activeforeground="#212529").pack(anchor=tk.W, pady=5)
         
         # Feature Toggles UI
-        tk.Checkbutton(tab_setup, text="Enable Raw Feed", variable=self.enable_raw_var, command=self.rebuild_dashboard_grid, bg="#ffffff", fg="#212529", selectcolor="#ffffff", activebackground="#ffffff", activeforeground="#212529").pack(anchor=tk.W, pady=2)
-        tk.Checkbutton(tab_setup, text="Enable Contact Heatmap", variable=self.enable_heatmap_var, command=self.rebuild_dashboard_grid, bg="#ffffff", fg="#212529", selectcolor="#ffffff", activebackground="#ffffff", activeforeground="#212529").pack(anchor=tk.W, pady=2)
-        tk.Checkbutton(tab_setup, text="Enable Optical Flow", variable=self.enable_flow_var, command=self.rebuild_dashboard_grid, bg="#ffffff", fg="#212529", selectcolor="#ffffff", activebackground="#ffffff", activeforeground="#212529").pack(anchor=tk.W, pady=2)
-        tk.Checkbutton(tab_setup, text="Enable 3D Reconstruction", variable=self.enable_reconstruction_var, command=self.rebuild_dashboard_grid, bg="#ffffff", fg="#212529", selectcolor="#ffffff", activebackground="#ffffff", activeforeground="#212529").pack(anchor=tk.W, pady=2)
-
-        # Grid Layout Layout
-        layout_frame = tk.Frame(tab_setup, bg="#ffffff")
-        layout_frame.pack(fill=tk.X, pady=(5, 10))
-        tk.Label(layout_frame, text="Grid Layout Columns:", bg="#ffffff", fg="#495057", font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT)
-        self.cb_layout_cols = ttk.Combobox(layout_frame, textvariable=self.layout_cols_var, values=["Auto", "1", "2", "3", "4"], state="readonly", width=8)
-        self.cb_layout_cols.pack(side=tk.LEFT, padx=5)
-        self.cb_layout_cols.bind("<<ComboboxSelected>>", lambda e: self.rebuild_dashboard_grid())
+        tk.Checkbutton(tab_setup, text="Enable Contact Heatmap", variable=self.enable_heatmap_var, bg="#ffffff", fg="#212529", selectcolor="#ffffff", activebackground="#ffffff", activeforeground="#212529").pack(anchor=tk.W, pady=2)
+        tk.Checkbutton(tab_setup, text="Enable Optical Flow", variable=self.enable_flow_var, bg="#ffffff", fg="#212529", selectcolor="#ffffff", activebackground="#ffffff", activeforeground="#212529").pack(anchor=tk.W, pady=2)
+        tk.Checkbutton(tab_setup, text="Enable 3D Reconstruction", variable=self.enable_reconstruction_var, bg="#ffffff", fg="#212529", selectcolor="#ffffff", activebackground="#ffffff", activeforeground="#212529").pack(anchor=tk.W, pady=2)
 
         # Save Configuration Button
         # Save Toggles (Checkboxes)
@@ -1035,31 +656,8 @@ class PredictionApp:
         tk.Checkbutton(chk_frame, text="3D Height Chart (.png)", variable=self.save_height_3d_var, bg="#ffffff", fg="#212529", selectcolor="#ffffff", activebackground="#ffffff", activeforeground="#212529").pack(anchor=tk.W, pady=3)
         tk.Checkbutton(chk_frame, text="2D Height Top View (.png)", variable=self.save_height_2d_var, bg="#ffffff", fg="#212529", selectcolor="#ffffff", activebackground="#ffffff", activeforeground="#212529").pack(anchor=tk.W, pady=3)
 
-        tk.Button(
-            settings_footer,
-            text="Close",
-            bg="#e9ecef",
-            fg="#495057",
-            font=("Segoe UI", 10),
-            relief=tk.FLAT,
-            bd=0,
-            command=self.hide_settings_window,
-            padx=18,
-            pady=7,
-        ).pack(side=tk.RIGHT, padx=(8, 0))
-        self.btn_save_config = tk.Button(
-            settings_footer,
-            text="Save Settings",
-            bg="#007bff",
-            fg="#ffffff",
-            font=("Segoe UI", 10, "bold"),
-            relief=tk.FLAT,
-            bd=0,
-            command=self.save_config,
-            padx=18,
-            pady=7,
-        )
-        self.btn_save_config.pack(side=tk.RIGHT)
+        self.btn_save_config = tk.Button(tab_setup, text="SAVE CONFIGURATION", bg="#ffc107", fg="#212529", font=("Segoe UI", 9, "bold"), relief=tk.FLAT, bd=0, command=self.save_config, height=1)
+        self.btn_save_config.pack(fill=tk.X, pady=(10, 0))
         
         # --- TAB 2: Optical Flow ---
         flow_frame = tk.LabelFrame(tab_flow, text="Flow Parameters", bg="#ffffff", fg="#007bff", font=("Segoe UI", 9, "bold"), padx=5, pady=5)
@@ -1140,8 +738,6 @@ class PredictionApp:
         self.add_mini_slider(pw_frame, "R weight:", self.w_yR, -3.0, 3.0)
         self.add_mini_slider(pw_frame, "G weight:", self.w_yG, -3.0, 3.0)
         self.add_mini_slider(pw_frame, "B weight:", self.w_yB, -3.0, 3.0)
-
-        self.show_main_view("predict")
         
         # Static status label below notebook, static at bottom
         self.status_lbl = tk.Label(sidebar_container, textvariable=self.status_var, font=("Segoe UI", 10, "bold"), bg="#ffffff", fg="#007bff", pady=5, bd=1, relief=tk.SUNKEN)
@@ -1151,32 +747,36 @@ class PredictionApp:
         self.fps_lbl.pack(side=tk.BOTTOM, fill=tk.X, pady=(0, 2))
         
         # --- RIGHT AREA: 2X2 DASHBOARD GRID ---
-        self.grid_frame = tk.Frame(main_frame, bg="#f8f9fa")
-        self.grid_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        grid_frame = tk.Frame(main_frame, bg="#f8f9fa")
+        grid_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         
         # Configure Grid Weights
-        self.grid_frame.rowconfigure(0, weight=1)
-        self.grid_frame.rowconfigure(1, weight=1)
-        self.grid_frame.columnconfigure(0, weight=1)
-        self.grid_frame.columnconfigure(1, weight=1)
+        grid_frame.rowconfigure(0, weight=1)
+        grid_frame.rowconfigure(1, weight=1)
+        grid_frame.columnconfigure(0, weight=1)
+        grid_frame.columnconfigure(1, weight=1)
         
         # 1. Raw Stream Canvas
-        self.p1 = tk.LabelFrame(self.grid_frame, text="Raw Feed", bg="#ffffff", fg="#007bff", font=("Segoe UI", 10, "bold"), padx=5, pady=5)
+        self.p1 = tk.LabelFrame(grid_frame, text="Raw Feed", bg="#ffffff", fg="#007bff", font=("Segoe UI", 10, "bold"), padx=5, pady=5)
+        self.p1.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
         self.lbl_raw = tk.Label(self.p1, bg="#f8f9fa")
         self.lbl_raw.pack(fill=tk.BOTH, expand=True)
         
         # 2. Difference Map Canvas
-        self.p2 = tk.LabelFrame(self.grid_frame, text="Difference / Contact Heatmap", bg="#ffffff", fg="#007bff", font=("Segoe UI", 10, "bold"), padx=5, pady=5)
+        self.p2 = tk.LabelFrame(grid_frame, text="Difference / Contact Heatmap", bg="#ffffff", fg="#007bff", font=("Segoe UI", 10, "bold"), padx=5, pady=5)
+        self.p2.grid(row=0, column=1, padx=5, pady=5, sticky="nsew")
         self.lbl_diff = tk.Label(self.p2, bg="#f8f9fa")
         self.lbl_diff.pack(fill=tk.BOTH, expand=True)
         
         # 3. Deformation Vectors Canvas
-        self.p3 = tk.LabelFrame(self.grid_frame, text="Deformation Field Vectors (Optical Flow)", bg="#ffffff", fg="#007bff", font=("Segoe UI", 10, "bold"), padx=5, pady=5)
+        self.p3 = tk.LabelFrame(grid_frame, text="Deformation Field Vectors (Optical Flow)", bg="#ffffff", fg="#007bff", font=("Segoe UI", 10, "bold"), padx=5, pady=5)
+        self.p3.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
         self.lbl_vectors = tk.Label(self.p3, bg="#f8f9fa")
         self.lbl_vectors.pack(fill=tk.BOTH, expand=True)
         
         # 4. 3D Mesh / Reconstruction (Matplotlib)
-        self.p4 = tk.LabelFrame(self.grid_frame, text="3D Height Reconstruction", bg="#ffffff", fg="#007bff", font=("Segoe UI", 10, "bold"), padx=5, pady=5)
+        self.p4 = tk.LabelFrame(grid_frame, text="3D Height Reconstruction", bg="#ffffff", fg="#007bff", font=("Segoe UI", 10, "bold"), padx=5, pady=5)
+        self.p4.grid(row=1, column=1, padx=5, pady=5, sticky="nsew")
         
         # Pop-out Viewer Button
         self.btn_popout = tk.Button(self.p4, text="Pop-out Viewer ↗", bg="#007bff", fg="white", font=("Segoe UI", 9, "bold"), relief=tk.FLAT, bd=0, command=self.open_popout_viewer, height=1)
@@ -1198,76 +798,6 @@ class PredictionApp:
         
         self.canvas_3d = FigureCanvasTkAgg(self.fig, master=self.p4)
         self.canvas_3d.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-        
-        # Call once to initialize grid layout based on default toggles
-        self.rebuild_dashboard_grid()
-
-    def rebuild_dashboard_grid(self):
-        # 1. Hide all panels
-        self.p1.grid_forget()
-        self.p2.grid_forget()
-        self.p3.grid_forget()
-        self.p4.grid_forget()
-        
-        # 2. Reset weights
-        self.grid_frame.rowconfigure(0, weight=0)
-        self.grid_frame.rowconfigure(1, weight=0)
-        self.grid_frame.columnconfigure(0, weight=0)
-        self.grid_frame.columnconfigure(1, weight=0)
-        
-        # 3. Determine active panels
-        active = []
-        if self.enable_raw_var.get(): active.append(self.p1)
-        if self.enable_heatmap_var.get(): active.append(self.p2)
-        if self.enable_flow_var.get(): active.append(self.p3)
-        if self.enable_reconstruction_var.get(): active.append(self.p4)
-        
-        if not active:
-            return
-            
-        n = len(active)
-        layout_mode = self.layout_cols_var.get()
-        
-        if layout_mode == "Auto":
-            if n == 1:
-                active[0].grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
-                self.grid_frame.rowconfigure(0, weight=1)
-                self.grid_frame.columnconfigure(0, weight=1)
-            elif n == 2:
-                active[0].grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
-                active[1].grid(row=0, column=1, padx=5, pady=5, sticky="nsew")
-                self.grid_frame.rowconfigure(0, weight=1)
-                self.grid_frame.columnconfigure(0, weight=1)
-                self.grid_frame.columnconfigure(1, weight=1)
-            elif n == 3:
-                # 2 on top, 1 on bottom left
-                active[0].grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
-                active[1].grid(row=0, column=1, padx=5, pady=5, sticky="nsew")
-                active[2].grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
-                self.grid_frame.rowconfigure(0, weight=1)
-                self.grid_frame.rowconfigure(1, weight=1)
-                self.grid_frame.columnconfigure(0, weight=1)
-                self.grid_frame.columnconfigure(1, weight=1)
-            elif n == 4:
-                active[0].grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
-                active[1].grid(row=0, column=1, padx=5, pady=5, sticky="nsew")
-                active[2].grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
-                active[3].grid(row=1, column=1, padx=5, pady=5, sticky="nsew")
-                self.grid_frame.rowconfigure(0, weight=1)
-                self.grid_frame.rowconfigure(1, weight=1)
-                self.grid_frame.columnconfigure(0, weight=1)
-                self.grid_frame.columnconfigure(1, weight=1)
-        else:
-            try:
-                cols = int(layout_mode)
-            except ValueError:
-                cols = 2
-            for i, panel in enumerate(active):
-                r = i // cols
-                c = i % cols
-                panel.grid(row=r, column=c, padx=5, pady=5, sticky="nsew")
-                self.grid_frame.rowconfigure(r, weight=1)
-                self.grid_frame.columnconfigure(c, weight=1)
         
     def add_slider(self, parent, text, var, val_min, val_max, is_int=False):
         frame = tk.Frame(parent, bg="#ffffff")
@@ -1346,11 +876,10 @@ class PredictionApp:
             return
 
         settings = {
-            "enable_raw": self.enable_raw_var.get(),
             "enable_heatmap": self.enable_heatmap_var.get(),
             "enable_flow": self.enable_flow_var.get(),
             "enable_reconstruction": self.enable_reconstruction_var.get(),
-            "layout_cols": self.layout_cols_var.get(),
+            "display_3d": self.display_3d_var.get(),
             "save_raw": self.save_raw_var.get(),
             "save_contact": self.save_contact_var.get(),
             "save_mask": self.save_mask_var.get(),
@@ -1360,8 +889,6 @@ class PredictionApp:
             "frame_scale": self.frame_scale_var.get(),
             "capture_mode": getattr(self, "capture_mode_var", tk.StringVar(value="Image")).get(),
             "auto_capture_threshold": getattr(self, "auto_capture_threshold", tk.IntVar(value=500)).get(),
-            "prediction_threshold": self.prediction_threshold.get(),
-            "prediction_timer_seconds": self.prediction_timer_seconds.get(),
             "invert_depth": self.invert_depth_var.get(),
             "depth_scale": self.depth_scale.get(),
             "grid_res": self.grid_res.get(),
@@ -1614,11 +1141,10 @@ class PredictionApp:
                 if key in current_sensor:
                     var.set(type_cast(current_sensor[key]))
 
-            set_val(self.enable_raw_var, "enable_raw", bool)
             set_val(self.enable_heatmap_var, "enable_heatmap", bool)
             set_val(self.enable_flow_var, "enable_flow", bool)
             set_val(self.enable_reconstruction_var, "enable_reconstruction", bool)
-            set_val(self.layout_cols_var, "layout_cols", str)
+            set_val(self.display_3d_var, "display_3d", bool)
             set_val(self.save_raw_var, "save_raw", bool)
             set_val(self.save_contact_var, "save_contact", bool)
             set_val(self.save_mask_var, "save_mask", bool)
@@ -1628,8 +1154,6 @@ class PredictionApp:
             set_val(self.frame_scale_var, "frame_scale", float)
             set_val(getattr(self, "capture_mode_var", tk.StringVar(value="Image")), "capture_mode", str)
             set_val(getattr(self, "auto_capture_threshold", tk.IntVar(value=500)), "auto_capture_threshold", int)
-            set_val(self.prediction_threshold, "prediction_threshold", int)
-            set_val(self.prediction_timer_seconds, "prediction_timer_seconds", float)
             
             # Refresh capture mode UI dynamically
             if hasattr(self, "on_capture_mode_change"):
@@ -1674,7 +1198,6 @@ class PredictionApp:
             
             # Rebuild dynamic sliders based on newly loaded method
             self.update_diff_widgets(None)
-            self.rebuild_dashboard_grid()
             
             # Automatically start background baseline calibration when camera connects
             self.capture_reference()
@@ -1764,570 +1287,6 @@ class PredictionApp:
             self.popout_ax = None
 
     # --- Video / Image Processing Thread Loop ---
-    
-    def log_message(self, message):
-        import datetime
-        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-        def append_log():
-            self.txt_logs.config(state=tk.NORMAL)
-            self.txt_logs.insert(tk.END, f"[{timestamp}] {message}\n")
-            self.txt_logs.see(tk.END)
-            self.txt_logs.config(state=tk.DISABLED)
-        self.root.after(0, append_log)
-
-    def update_treeview(self, probabilities):
-        for item in self.tree_probs.get_children():
-            self.tree_probs.delete(item)
-        sorted_probs = sorted(probabilities.items(), key=lambda x: x[1], reverse=True)
-        for class_name, prob in sorted_probs:
-            self.tree_probs.insert("", tk.END, values=(class_name, f"{prob:.1f}%"))
-
-    def browse_weights(self):
-        models_directory = os.path.join(_root_dir, "models")
-        file_path = filedialog.askopenfilename(
-            initialdir=models_directory if os.path.isdir(models_directory) else _root_dir,
-            title="Select Model Weights",
-            filetypes=(("PyTorch Model", "*.pth"), ("All Files", "*.*"))
-        )
-        if file_path:
-            self.model_var.set(file_path)
-            self.on_model_selected()
-
-    def on_model_selected(self, event=None):
-        arch = getattr(self, "arch_var", tk.StringVar(value="ResNet-18")).get()
-        weights_path = self.model_var.get()
-        
-        if not weights_path or not os.path.exists(weights_path):
-            self.update_treeview({})
-            self.current_model = None
-            self.class_names = []
-            return
-            
-        try:
-            # Derive labels path
-            base, _ = os.path.splitext(weights_path)
-            labels_path = base + ".txt"
-            
-            if os.path.exists(labels_path):
-                with open(labels_path, "r") as f:
-                    self.class_names = [line.strip() for line in f.readlines() if line.strip()]
-            else:
-                self.class_names = []
-                self.log_message(f"Warning: Labels file not found at {labels_path}")
-                
-            num_classes = max(len(self.class_names), 1)
-            
-            if arch == "ResNet-18":
-                import torch
-                import torch.nn as nn
-                from torchvision import models
-                import torchvision.transforms as T
-                from tools.model_calibration import load_encoder_temperature
-                
-                model = models.resnet18(weights=None)
-                num_ftrs = model.fc.in_features
-                model.fc = nn.Linear(num_ftrs, num_classes)
-                
-                state = torch.load(weights_path, map_location="cpu")
-                model.load_state_dict(state)
-                model.eval()
-                
-                self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-                model.to(self.device)
-                
-                self.current_model = model
-                self.encoder_temperature, calibration_path = load_encoder_temperature(
-                    weights_path
-                )
-                self.encoder_calibrated = calibration_path.is_file()
-                if calibration_path.is_file():
-                    self.log_message(
-                        f"Loaded encoder calibration: T={self.encoder_temperature:.4f} "
-                        f"from {calibration_path}"
-                    )
-                else:
-                    self.log_message(
-                        f"No encoder calibration sidecar found at {calibration_path}; using T=1.0"
-                    )
-                
-                self.val_transform = T.Compose([
-                    T.Resize((256, 256)),
-                    T.CenterCrop(224),
-                    T.ToTensor(),
-                    T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-                ])
-                
-            if self.class_names:
-                self.update_treeview({c: 0.0 for c in self.class_names})
-            else:
-                self.update_treeview({f"Class {i}": 0.0 for i in range(num_classes)})
-                
-            self.log_message(f"Loaded {arch} from {weights_path}")
-            self.on_shape_algo_selected()
-            self.reset_compare_trial()
-            
-        except Exception as e:
-            self.log_message(f"Error loading model: {e}")
-            self.current_model = None
-            self.class_names = []
-
-    def on_shape_algo_selected(self, event=None):
-        try:
-            self.shape_algo_spec = get_algorithm_by_display_name(self.shape_algo_var.get())
-            self.shape_algo = self.shape_algo_spec.create(
-                model_path=self.model_var.get()
-            )
-            self.validate_algorithm_features(self.shape_algo)
-            config_path = getattr(self.shape_algo, "config_path", None)
-            if config_path:
-                self.log_message(f"Loaded {self.shape_algo_spec.display_name} config: {config_path}")
-        except Exception as exc:
-            self.shape_algo_spec = None
-            self.shape_algo = None
-            self.log_message(f"Failed to load shape algorithm: {exc}")
-        self.reset_multi_trial()
-
-    def validate_algorithm_features(self, algorithm):
-        configured_features = getattr(algorithm, "features", None)
-        model_features = getattr(self, "class_names", None)
-        if not configured_features or not model_features:
-            return
-
-        aliases = getattr(algorithm, "aliases", {})
-        normalized_model_features = {
-            aliases.get(str(label).strip().lower(), str(label).strip().lower())
-            for label in model_features
-        }
-        configured_features = set(configured_features)
-        missing_from_model = sorted(configured_features - normalized_model_features)
-        missing_from_config = sorted(normalized_model_features - configured_features)
-        if missing_from_model or missing_from_config:
-            details = []
-            if missing_from_model:
-                details.append("not produced by model: " + ", ".join(missing_from_model))
-            if missing_from_config:
-                details.append("not configured: " + ", ".join(missing_from_config))
-            raise ValueError("Feature-label mismatch (" + "; ".join(details) + ")")
-
-    def update_global_shape_display(self, result):
-        if not result:
-            return
-
-        if isinstance(result, dict):
-            best_shape = max(result, key=result.get)
-            best_prob = result[best_shape] * 100
-            self.global_shape_var.set(f"Global Shape: {best_shape.upper()} ({best_prob:.1f}%)")
-            return
-
-        belief = getattr(result, "belief", None)
-        prediction = getattr(result, "prediction", None)
-        if belief and prediction:
-            best_prob = belief.get(prediction, 0.0) * 100
-            if getattr(result, "is_uncertain", False):
-                self.global_shape_var.set(
-                    f"Global Shape: UNCERTAIN (best {prediction.upper()}, {best_prob:.1f}%)"
-                )
-            else:
-                stop_text = " | ACCEPT" if getattr(result, "should_stop", False) else ""
-                self.global_shape_var.set(
-                    f"Global Shape: {prediction.upper()} ({best_prob:.1f}%){stop_text}"
-                )
-
-    def reset_multi_trial(self):
-        for item in self.tree_multi.get_children():
-            self.tree_multi.delete(item)
-        self.multi_touch_counter = 0
-        self.multi_trial_stopped = False
-        if hasattr(self, 'shape_algo') and hasattr(self.shape_algo, 'reset'):
-            self.shape_algo.reset()
-        self.global_shape_var.set("Global Shape: Unknown (0%)")
-        self.multi_status_var.set("Waiting for Object...")
-
-    def build_compare_algorithms(self):
-        algorithms = {}
-        variables = getattr(self, "compare_algorithm_vars", {})
-        for spec in getattr(self, "algorithm_specs", ()):
-            enabled = variables.get(spec.key)
-            if enabled is None or not enabled.get():
-                continue
-            try:
-                model_path = self.model_var.get()
-                algorithm = spec.create(model_path=model_path)
-                self.validate_algorithm_features(algorithm)
-                algorithms[spec.key] = (spec, algorithm)
-            except Exception as exc:
-                self.log_message(f"Failed to load {spec.display_name}: {exc}")
-        return algorithms
-
-    def open_compare_details_window(self):
-        if (
-            self.compare_details_window is not None
-            and self.compare_details_window.winfo_exists()
-        ):
-            self.compare_details_window.deiconify()
-            self.compare_details_window.lift()
-            self.compare_details_window.focus_force()
-            return
-
-        window = tk.Toplevel(self.root)
-        window.title("Algorithm Comparison Details")
-        window.geometry("760x620")
-        window.minsize(560, 420)
-        window.configure(bg="#f8f9fa")
-        window.transient(self.root)
-        window.protocol("WM_DELETE_WINDOW", window.withdraw)
-        self.compare_details_window = window
-
-        header = tk.Frame(window, bg="#ffffff", padx=16, pady=12)
-        header.pack(fill=tk.X)
-        tk.Label(
-            header,
-            text="Comparison Details",
-            bg="#ffffff",
-            fg="#212529",
-            font=("Segoe UI", 15, "bold"),
-        ).pack(side=tk.LEFT)
-        tk.Button(
-            header,
-            text="Close",
-            bg="#e9ecef",
-            fg="#495057",
-            relief=tk.FLAT,
-            bd=0,
-            command=window.withdraw,
-            padx=14,
-            pady=6,
-        ).pack(side=tk.RIGHT)
-
-        text_frame = tk.Frame(window, bg="#f8f9fa")
-        text_frame.pack(fill=tk.BOTH, expand=True, padx=16, pady=16)
-        text_frame.rowconfigure(0, weight=1)
-        text_frame.columnconfigure(0, weight=1)
-        vertical = ttk.Scrollbar(text_frame, orient=tk.VERTICAL)
-        horizontal = ttk.Scrollbar(text_frame, orient=tk.HORIZONTAL)
-        self.txt_compare_details = tk.Text(
-            text_frame,
-            bg="#ffffff",
-            fg="#212529",
-            font=("Consolas", 10),
-            state=tk.DISABLED,
-            wrap=tk.NONE,
-            padx=12,
-            pady=12,
-            yscrollcommand=vertical.set,
-            xscrollcommand=horizontal.set,
-        )
-        vertical.config(command=self.txt_compare_details.yview)
-        horizontal.config(command=self.txt_compare_details.xview)
-        self.txt_compare_details.grid(row=0, column=0, sticky="nsew")
-        vertical.grid(row=0, column=1, sticky="ns")
-        horizontal.grid(row=1, column=0, sticky="ew")
-        self.render_compare_details()
-
-    def render_compare_details(self):
-        if (
-            self.txt_compare_details is None
-            or not self.txt_compare_details.winfo_exists()
-        ):
-            return
-        content = "\n\n".join(self.compare_detail_log)
-        if not content:
-            content = "No comparison details recorded."
-        self.txt_compare_details.config(state=tk.NORMAL)
-        self.txt_compare_details.delete("1.0", tk.END)
-        self.txt_compare_details.insert(tk.END, content)
-        self.txt_compare_details.config(state=tk.DISABLED)
-        self.txt_compare_details.see(tk.END)
-
-    def reset_compare_trial(self):
-        if hasattr(self, "tree_compare"):
-            for item in self.tree_compare.get_children():
-                self.tree_compare.delete(item)
-        self.compare_touch_counter = 0
-        self.compare_timer_active = False
-        self.compare_waiting_for_removal = False
-        self.compare_trial_stopped = False
-        self.compare_algos = self.build_compare_algorithms() if hasattr(self, "compare_algorithm_vars") else {}
-        if hasattr(self, "compare_status_var"):
-            self.compare_status_var.set("Waiting for Object...")
-        if hasattr(self, "compare_result_summary_var"):
-            self.compare_result_summary_var.set("Waiting for first touch")
-        if hasattr(self, "compare_detail_log"):
-            self.compare_detail_log = []
-            self.compare_details_summary_var.set("No details recorded")
-            self.render_compare_details()
-
-    def format_probability_block(self, title, probs):
-        lines = [f"{title}:"]
-        for name, value in sorted(probs.items(), key=lambda x: -x[1]):
-            lines.append(f"  {name:<16} {value * 100:6.2f}%")
-        return "\n".join(lines)
-
-    def append_compare_details(self, text):
-        self.compare_detail_log.append(text)
-        touch_count = len(self.compare_detail_log)
-        suffix = "touch" if touch_count == 1 else "touches"
-        self.compare_details_summary_var.set(f"Details available for {touch_count} {suffix}")
-        self.render_compare_details()
-
-    def update_compare_results_display(self, local_results, algorithm_results):
-        for item in self.tree_compare.get_children():
-            self.tree_compare.delete(item)
-
-        detail_lines = []
-        displayed_predictions = []
-        top_feature = max(local_results, key=local_results.get)
-        detail_lines.append(f"Touch {self.compare_touch_counter}: {top_feature.upper()} ({local_results[top_feature]:.1f}%)")
-        detail_lines.append("")
-        detail_lines.append("Local feature probabilities:")
-        for name, value in sorted(local_results.items(), key=lambda x: -x[1]):
-            detail_lines.append(f"  {name:<18} {value:6.2f}%")
-
-        for algo_name, result in algorithm_results.items():
-            if isinstance(result, dict):
-                prediction = max(result, key=result.get)
-                confidence = result[prediction]
-                probs = result
-                row_tag = "active"
-                detail_lines.append("")
-                detail_lines.append(self.format_probability_block(algo_name, probs))
-            else:
-                prediction = getattr(result, "prediction", "unknown")
-                belief = getattr(result, "belief", {})
-                confidence = belief.get(prediction, 0.0)
-                is_uncertain = getattr(result, "is_uncertain", False)
-                displayed_prediction = "UNCERTAIN" if is_uncertain else prediction.upper()
-                detail_lines.append("")
-                detail_lines.append(self.format_probability_block(algo_name, belief))
-                detail_lines.append(f"  entropy:           {getattr(result, 'entropy', 0.0):.4f}")
-                detail_lines.append(f"  touches:           {getattr(result, 'touch_count', 0)}")
-                coverage = getattr(result, "feature_coverage", {})
-                if coverage:
-                    detail_lines.append("  feature coverage:")
-                    for fname, fval in sorted(coverage.items(), key=lambda x: -x[1]):
-                        if fval > 0.001:
-                            detail_lines.append(f"    {fname:<16} {fval:6.3f}")
-                stopping_reason = getattr(result, "stopping_reason", None)
-                if stopping_reason == "confidence":
-                    row_tag = "accepted"
-                    detail_lines.append("  decision: ACCEPTED (confidence criteria met)")
-                elif stopping_reason == "max_touches":
-                    row_tag = "uncertain"
-                    detail_lines.append(
-                        f"  decision: UNCERTAIN (best class: {prediction.upper()})"
-                    )
-                else:
-                    row_tag = "active"
-            if isinstance(result, dict):
-                displayed_prediction = prediction.upper()
-
-            displayed_predictions.append(displayed_prediction)
-
-            self.tree_compare.insert(
-                "",
-                tk.END,
-                values=(
-                    algo_name,
-                    displayed_prediction,
-                    f"{confidence * 100:.1f}%",
-                ),
-                tags=(row_tag,),
-            )
-
-        unique_predictions = set(displayed_predictions)
-        if not displayed_predictions:
-            self.compare_result_summary_var.set("No algorithm results")
-        elif len(displayed_predictions) == 1:
-            self.compare_result_summary_var.set(
-                f"Prediction: {displayed_predictions[0]}"
-            )
-        elif len(unique_predictions) == 1:
-            self.compare_result_summary_var.set(
-                f"Agreement: {displayed_predictions[0]}"
-            )
-        else:
-            self.compare_result_summary_var.set("Algorithms disagree")
-
-        self.append_compare_details("\n".join(detail_lines))
-
-    def run_comparison_prediction(self, frame):
-        if getattr(self, "current_model", None) is None:
-            self.root.after(0, lambda: self.compare_status_var.set("Error: No Model Selected!"))
-            self.root.after(2000, lambda: self.compare_status_var.set("Waiting for Object..."))
-            return
-
-        try:
-            import cv2
-            from PIL import Image
-            import torch
-
-            if len(frame.shape) == 2:
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
-            elif len(frame.shape) == 3 and frame.shape[2] == 3:
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            else:
-                frame_rgb = frame
-
-            img = Image.fromarray(frame_rgb)
-            tensor = self.val_transform(img).unsqueeze(0).to(self.device)
-
-            with torch.no_grad():
-                logits = self.current_model(tensor)
-                probs = torch.nn.functional.softmax(logits, dim=1)[0]
-
-            local_results = {}
-            for i, prob in enumerate(probs):
-                name = self.class_names[i] if i < len(self.class_names) else f"Class {i}"
-                local_results[name] = prob.item() * 100
-
-            if not local_results:
-                return
-
-            def append_compare_result():
-                if not self.compare_algos:
-                    self.compare_algos = self.build_compare_algorithms()
-                if not self.compare_algos:
-                    self.compare_status_var.set("Select at least one algorithm.")
-                    return
-
-                self.compare_touch_counter += 1
-                top_feature = max(local_results, key=local_results.get)
-                self.compare_status_var.set(f"Touch {self.compare_touch_counter}: {top_feature.upper()}")
-
-                algorithm_results = {}
-                feature_probs = {name: prob / 100.0 for name, prob in local_results.items()}
-                for spec, algorithm in self.compare_algos.values():
-                    algorithm_results[spec.display_name] = spec.update(
-                        algorithm,
-                        feature_probabilities=feature_probs,
-                        top_feature=top_feature,
-                    )
-
-                self.update_compare_results_display(local_results, algorithm_results)
-                stopping_results = [
-                    result
-                    for result in algorithm_results.values()
-                    if getattr(result, "should_stop", False)
-                ]
-                if stopping_results:
-                    self.compare_trial_stopped = True
-                    if any(
-                        getattr(result, "is_uncertain", False)
-                        for result in stopping_results
-                    ):
-                        self.compare_status_var.set("Trial stopped: uncertain")
-                    else:
-                        self.compare_status_var.set("Trial stopped: accepted")
-
-            self.root.after(0, append_compare_result)
-        except Exception as e:
-            self.log_message(f"Comparison Prediction Error: {e}")
-            self.root.after(0, lambda: self.compare_status_var.set("Prediction Error!"))
-
-    def run_prediction(self, frame):
-        if getattr(self, "current_model", None) is None:
-            self.root.after(0, lambda: self.pred_result_var.set("No Model Selected"))
-            return
-            
-        try:
-            import cv2
-            from PIL import Image
-            import torch
-            from tools.model_calibration import apply_temperature
-            
-            if len(frame.shape) == 2:
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
-            elif len(frame.shape) == 3 and frame.shape[2] == 3:
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            else:
-                frame_rgb = frame
-                
-            img = Image.fromarray(frame_rgb)
-            tensor = self.val_transform(img).unsqueeze(0).to(self.device)
-            
-            with torch.no_grad():
-                logits = apply_temperature(
-                    self.current_model(tensor),
-                    getattr(self, "encoder_temperature", 1.0),
-                )
-                probs = torch.nn.functional.softmax(logits, dim=1)[0]
-                
-            results = {}
-            for i, prob in enumerate(probs):
-                name = self.class_names[i] if i < len(self.class_names) else f"Class {i}"
-                results[name] = prob.item() * 100
-                
-            if results:
-                top_class = max(results, key=results.get)
-                self.root.after(0, lambda: self.pred_result_var.set(top_class.upper()))
-                self.root.after(0, lambda: self.update_treeview(results))
-        except Exception as e:
-            self.log_message(f"Prediction Error: {e}")
-            self.root.after(0, lambda: self.pred_result_var.set("Error - Check Logs"))
-
-    def run_multi_prediction(self, frame):
-        if getattr(self, "current_model", None) is None:
-            self.root.after(0, lambda: self.multi_status_var.set("Error: No Model Selected!"))
-            self.root.after(2000, lambda: self.multi_status_var.set("Waiting for Object..."))
-            return
-            
-        try:
-            import cv2
-            from PIL import Image
-            import torch
-            import datetime
-            
-            if len(frame.shape) == 2:
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
-            elif len(frame.shape) == 3 and frame.shape[2] == 3:
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            else:
-                frame_rgb = frame
-                
-            img = Image.fromarray(frame_rgb)
-            tensor = self.val_transform(img).unsqueeze(0).to(self.device)
-            
-            with torch.no_grad():
-                logits = self.current_model(tensor)
-                probs = torch.nn.functional.softmax(logits, dim=1)[0]
-                
-            results = {}
-            for i, prob in enumerate(probs):
-                name = self.class_names[i] if i < len(self.class_names) else f"Class {i}"
-                results[name] = prob.item() * 100
-                
-            if results:
-                top_class = max(results, key=results.get)
-                
-                def append_multi_result():
-                    self.multi_touch_counter += 1
-                    self.tree_multi.insert("", tk.END, values=(self.multi_touch_counter, top_class.upper()))
-                    self.tree_multi.yview_moveto(1) # Auto scroll to bottom
-                    self.multi_status_var.set(f"Predicted: {top_class.upper()}")
-                    
-                    if (
-                        getattr(self, "shape_algo", None) is not None
-                        and getattr(self, "shape_algo_spec", None) is not None
-                    ):
-                        feature_probs = {name: prob / 100.0 for name, prob in results.items()}
-                        updated_result = self.shape_algo_spec.update(
-                            self.shape_algo,
-                            feature_probabilities=feature_probs,
-                            top_feature=top_class,
-                        )
-                        self.update_global_shape_display(updated_result)
-                        if getattr(updated_result, "should_stop", False):
-                            self.multi_trial_stopped = True
-                            if getattr(updated_result, "is_uncertain", False):
-                                self.multi_status_var.set("Trial stopped: uncertain")
-                            else:
-                                self.multi_status_var.set("Trial stopped: accepted")
-                    
-                self.root.after(0, append_multi_result)
-        except Exception as e:
-            self.log_message(f"Multi Prediction Error: {e}")
-            self.root.after(0, lambda: self.multi_status_var.set("Prediction Error!"))
-
     def video_loop(self):
         prev_time = time.time()
         
@@ -2732,123 +1691,6 @@ class PredictionApp:
                         self.root.after(0, self.update_sample_count_display)
 
             # --- Trigger UI updates on the main thread (pass heatmap directly) ---
-            
-            # --- CONTINUOUS PREDICTION ---
-            curr_t = time.time()
-            src_type = self.frame_source_var.get()
-            pred_frame = None
-            if src_type == "Raw Frame":
-                pred_frame = frame
-            elif src_type == "Heatmap (2D Height)":
-                pred_frame = heatmap_blended
-            elif src_type == "Flow":
-                pred_frame = deform_frame
-            elif src_type == "Contact Mask":
-                pred_frame = mask_cleaned
-
-            if curr_t - getattr(self, 'last_pred_time', 0) >= getattr(self, 'pred_interval', 0.5):
-                self.last_pred_time = curr_t
-
-                if pred_frame is not None:
-                    try:
-                        thresh = self.prediction_threshold.get()
-                    except Exception:
-                        thresh = 100
-                        
-                    if getattr(self, 'current_contact_area', 0) >= thresh:
-                        # Copy frame for thread safety
-                        pf_copy = pred_frame.copy()
-                        # Run in background thread to avoid blocking video loop
-                        threading.Thread(target=self.run_prediction, args=(pf_copy,), daemon=True).start()
-                    else:
-                        self.root.after(0, lambda: self.pred_result_var.set("NO OBJECT"))
-                        def reset_probs():
-                            for item in self.tree_probs.get_children():
-                                vals = self.tree_probs.item(item, 'values')
-                                if vals:
-                                    self.tree_probs.item(item, values=(vals[0], "0.0%"))
-                        self.root.after(0, reset_probs)
-
-
-            # --- MULTI TOUCH PREDICTION ---
-            try:
-                if self.active_main_view == "multi":
-                    multi_thresh = self.prediction_threshold.get()
-                    contact_area = getattr(self, 'current_contact_area', 0)
-                    
-                    if self.multi_trial_stopped:
-                        pass
-                    elif contact_area >= multi_thresh:
-                        if self.multi_waiting_for_removal:
-                            pass
-                        elif not self.multi_timer_active:
-                            self.multi_timer_active = True
-                            self.multi_timer_start = curr_t
-                            self.root.after(0, lambda: self.multi_status_var.set("Detecting..."))
-                        else:
-                            elapsed = curr_t - self.multi_timer_start
-                            duration = self.prediction_timer_seconds.get()
-                            remaining = duration - elapsed
-                            
-                            if remaining > 0:
-                                self.root.after(0, lambda r=remaining: self.multi_status_var.set(f"Capturing in {r:.1f}s"))
-                            else:
-                                self.multi_timer_active = False
-                                self.multi_waiting_for_removal = True
-                                self.root.after(0, lambda: self.multi_status_var.set("Predicting..."))
-                                
-                                if pred_frame is not None:
-                                    pf_copy = pred_frame.copy()
-                                    threading.Thread(target=self.run_multi_prediction, args=(pf_copy,), daemon=True).start()
-                    else:
-                        if self.multi_timer_active:
-                            self.multi_timer_active = False
-                            self.root.after(0, lambda: self.multi_status_var.set("Waiting for Object..."))
-                        elif self.multi_waiting_for_removal:
-                            self.multi_waiting_for_removal = False
-            except Exception:
-                pass
-
-            # --- SHAPE ALGORITHM COMPARISON ---
-            try:
-                if self.active_main_view == "compare":
-                    compare_thresh = self.prediction_threshold.get()
-                    contact_area = getattr(self, 'current_contact_area', 0)
-
-                    if self.compare_trial_stopped:
-                        pass
-                    elif contact_area >= compare_thresh:
-                        if self.compare_waiting_for_removal:
-                            pass
-                        elif not self.compare_timer_active:
-                            self.compare_timer_active = True
-                            self.compare_timer_start = curr_t
-                            self.root.after(0, lambda: self.compare_status_var.set("Detecting..."))
-                        else:
-                            elapsed = curr_t - self.compare_timer_start
-                            duration = self.prediction_timer_seconds.get()
-                            remaining = duration - elapsed
-
-                            if remaining > 0:
-                                self.root.after(0, lambda r=remaining: self.compare_status_var.set(f"Capturing in {r:.1f}s"))
-                            else:
-                                self.compare_timer_active = False
-                                self.compare_waiting_for_removal = True
-                                self.root.after(0, lambda: self.compare_status_var.set("Predicting..."))
-
-                                if pred_frame is not None:
-                                    pf_copy = pred_frame.copy()
-                                    threading.Thread(target=self.run_comparison_prediction, args=(pf_copy,), daemon=True).start()
-                    else:
-                        if self.compare_timer_active:
-                            self.compare_timer_active = False
-                            self.root.after(0, lambda: self.compare_status_var.set("Waiting for Object..."))
-                        elif self.compare_waiting_for_removal:
-                            self.compare_waiting_for_removal = False
-            except Exception:
-                pass
-
-
             self.root.after(0, self.update_ui_frames, frame, heatmap_blended, deform_frame)
             
             # FPS Calculation
@@ -2865,11 +1707,10 @@ class PredictionApp:
             panel_w, panel_h = 420, 310
             
             # Raw Stream Render
-            if self.enable_raw_var.get():
-                raw_rgb = cv2.cvtColor(cv2.resize(raw, (panel_w, panel_h)), cv2.COLOR_BGR2RGB)
-                raw_pil = ImageTk.PhotoImage(image=Image.fromarray(raw_rgb))
-                self.lbl_raw.config(image=raw_pil)
-                self.lbl_raw.image = raw_pil
+            raw_rgb = cv2.cvtColor(cv2.resize(raw, (panel_w, panel_h)), cv2.COLOR_BGR2RGB)
+            raw_pil = ImageTk.PhotoImage(image=Image.fromarray(raw_rgb))
+            self.lbl_raw.config(image=raw_pil)
+            self.lbl_raw.image = raw_pil
             
             # Difference / Heatmap Render
             if diff is not None:
@@ -2914,7 +1755,7 @@ class PredictionApp:
                     self.popout_ax.set_facecolor("#ffffff")
                     self.popout_ax.text2D(0.5, 0.5, "Feature Disabled\\n(Saves Memory & CPU)", transform=self.popout_ax.transAxes, ha='center', va='center', color='#495057')
                     self.popout_canvas.draw()
-            elif hasattr(self, 'Z_plot'):
+            elif self.display_3d_var.get() and hasattr(self, 'Z_plot'):
                 res = self.grid_res.get()
                 grid_w = res
                 grid_h = int(res * raw.shape[0] / raw.shape[1])
@@ -2977,7 +1818,31 @@ class PredictionApp:
             self.update_sample_count_display()
 
     def update_sample_count_display(self, event=None):
-        pass
+        """Calculates and updates the count of existing samples for the current label."""
+        base_dir_raw = self.dataset_dir_var.get().strip()
+        sensor_name = self.source_var.get().replace("/", "_").replace("\\", "_")
+        mode = getattr(self, 'capture_mode_var', None)
+        mode_str = mode.get().lower() if mode else "image"
+        base_dir = os.path.join(base_dir_raw, sensor_name)
+
+        label = self.label_var.get().strip()
+        if not label:
+            self.lbl_sample_count.config(text="Existing Samples: N/A (Enter a label)")
+            return
+            
+        label_dir = os.path.join(base_dir, label)
+        if not os.path.exists(label_dir):
+            self.lbl_sample_count.config(text="Existing Samples: 0")
+            return
+            
+        try:
+            existing = os.listdir(label_dir)
+            sample_dirs = [name for name in existing if name.startswith("sample_") and os.path.isdir(os.path.join(label_dir, name))]
+            self.lbl_sample_count.config(text=f"Existing Samples: {len(sample_dirs)}")
+        except Exception as e:
+            self.lbl_sample_count.config(text="Existing Samples: Error reading folder")
+
+
 
     def on_capture_mode_change(self):
         """Toggle UI elements based on selected mode."""
@@ -3156,10 +2021,80 @@ class PredictionApp:
         self.update_sample_count_display()
 
     def update_sample_count_display(self, event=None):
-        pass
+        """Calculates and updates the count of existing samples for the current label."""
+        base_dir_raw = self.dataset_dir_var.get().strip()
+        sensor_name = self.source_var.get().replace("/", "_").replace("\\", "_")
+        mode = getattr(self, 'capture_mode_var', None)
+        mode_str = mode.get().lower() if mode else "image"
+        label = self.label_var.get().strip()
+        if not label:
+            self.lbl_sample_count.config(text="Existing Samples: N/A (Enter a label)")
+            return
+
+        label_dir = os.path.join(base_dir_raw, sensor_name, label, mode_str)
+        if not os.path.exists(label_dir):
+            self.lbl_sample_count.config(text="Existing Samples: 0")
+            return
+
+        try:
+            existing = os.listdir(label_dir)
+            if mode_str == "video":
+                samples = [name for name in existing if name.startswith("sequence_") and os.path.isdir(os.path.join(label_dir, name))]
+            else:
+                samples = [name for name in existing if name.endswith("_raw.png")]
+            self.lbl_sample_count.config(text=f"Existing Samples: {len(samples)}")
+        except Exception as e:
+            self.lbl_sample_count.config(text="Existing Samples: Error reading folder")
 
     def refresh_existing_labels(self):
-        pass
+        """Scans the dataset folder for subfolders to update the combobox dropdown tags and status listbox."""
+        base_dir_raw = self.dataset_dir_var.get().strip()
+        sensor_name = self.source_var.get().replace("/", "_").replace("\\", "_")
+        mode = getattr(self, 'capture_mode_var', None)
+        mode_str = mode.get().lower() if mode else "image"
+        base_dir = os.path.join(base_dir_raw, sensor_name)
+        if not os.path.exists(base_dir):
+            self.ent_label.config(values=[])
+            self.stats_listbox.delete(0, tk.END)
+            self.stats_listbox.insert(tk.END, "No base directory found")
+            return
+
+        try:
+            # Get list of subdirectories (labels)
+            labels = []
+            for name in os.listdir(base_dir):
+                path = os.path.join(base_dir, name)
+                if os.path.isdir(path) and not name.startswith(".") and name != "__pycache__":
+                    # Check if it has an image or video folder inside
+                    if os.path.exists(os.path.join(path, "image")) or os.path.exists(os.path.join(path, "video")):
+                        labels.append(name)
+            
+            # Sort labels alphabetically
+            labels.sort()
+            
+            # Update combobox dropdown tags
+            self.ent_label.config(values=labels)
+            
+            # Update scrollable listbox with labels and sample counts
+            self.stats_listbox.delete(0, tk.END)
+            if not labels:
+                self.stats_listbox.insert(tk.END, "No collected labels found yet.")
+            else:
+                for label in labels:
+                    label_dir = os.path.join(base_dir, label)
+                    try:
+                        if mode_str == "video":
+                            samples = [n for n in os.listdir(label_dir) if n.startswith("sequence_") and os.path.isdir(os.path.join(label_dir, n))]
+                        else:
+                            samples = [n for n in os.listdir(label_dir) if n.endswith("_raw.png")]
+                        count = len(samples)
+                    except Exception:
+                        count = 0
+                    self.stats_listbox.insert(tk.END, f"- {label}: {count} sample(s)")
+                    
+        except Exception as e:
+            self.stats_listbox.delete(0, tk.END)
+            self.stats_listbox.insert(tk.END, f"Error: {e}")
 
     def on_close(self):
         """Cleans up resources and closes window."""
@@ -3170,6 +2105,6 @@ class PredictionApp:
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = PredictionApp(root)
+    app = DatasetLabelingApp(root)
     root.protocol("WM_DELETE_WINDOW", app.on_close)
     root.mainloop()

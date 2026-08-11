@@ -89,6 +89,16 @@ def main():
     print(f"Classes found ({num_classes}): {class_names}")
     print(f"Dataset sizes: {dataset_sizes}")
 
+    # Save labels.txt to run_dir
+    labels_path = os.path.join(run_dir, "labels.txt")
+    try:
+        with open(labels_path, "w") as f:
+            for class_name in class_names:
+                f.write(f"{class_name}\n")
+        print(f"Saved labels to {labels_path}")
+    except Exception as e:
+        print(f"Warning: Failed to save labels.txt: {e}")
+
     # Load pre-trained ResNet-18
     print("Loading pre-trained ResNet-18 model...")
     model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)

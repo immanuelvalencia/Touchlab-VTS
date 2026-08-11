@@ -5,8 +5,23 @@
         "options": [
             "small",
             "medium",
-            "large"
+            "large",
+            "xlarge"
         ],
         "default": "small"
+    },
+    {
+        "name": "local_feature",
+        "type": "Dropdown",
+        "options": [
+            "planar",
+            "single_curvature",
+            "double_curvature",
+            "straight_edge",
+            "circular_rim",
+            "multiface_vertex",
+            "sharp_apex"
+        ],
+        "default": ""
     }
 ]
