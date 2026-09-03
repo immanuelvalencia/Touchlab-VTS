@@ -1,0 +1,17 @@
+shape,touch,feature,dataset_count,positive_weight,true_shape_confidence,predicted_shape,predicted_confidence,accepted_touch
+cone,1,single_curvature,0,1.8,0.2675214643670482,cylinder,0.7271987353117013,False
+cone,2,sharp_apex,226,1.7,0.9983989467375792,cone,0.9983989467375792,False
+cone,3,circular_rim,0,1.4,0.9992892615930427,cone,0.9992892615930427,True
+cone,4,planar,0,0.3,0.9984774315372328,cone,0.9984774315372328,False
+cube,1,multi_face_vertex,829,2.0,0.9522455484674444,cube,0.9522455484674444,False
+cube,2,straight_edge,1229,1.8,0.9626728345085539,cube,0.9626728345085539,False
+cube,3,planar,2023,1.6,0.9706877507866272,cube,0.9706877507866272,True
+cylinder,1,single_curvature,605,2.2,0.7271987353117013,cylinder,0.7271987353117013,False
+cylinder,2,circular_rim,1857,1.6,0.8175717920299815,cylinder,0.8175717920299815,False
+cylinder,3,planar,321,0.6,0.9046479649111951,cylinder,0.9046479649111951,True
+sphere,1,double_curvature,1035,2.7,0.999968811455813,sphere,0.999968811455813,False
+sphere,2,single_curvature,0,0.2,0.9979472750079821,sphere,0.9979472750079821,True
+square_pyramid,1,sharp_apex,220,1.9,0.6223207015258142,square_pyramid,0.6223207015258142,False
+square_pyramid,2,straight_edge,1239,1.7,0.9990293931481552,square_pyramid,0.9990293931481552,False
+square_pyramid,3,planar,113,1.5,0.9996293054743758,square_pyramid,0.9996293054743758,True
+square_pyramid,4,multi_face_vertex,271,0.8,0.993307062554643,square_pyramid,0.993307062554643,False

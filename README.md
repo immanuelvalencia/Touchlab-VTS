@@ -4,11 +4,17 @@ TouchLab VTS is a desktop research toolkit for collecting, processing, and
 classifying visuo-tactile contacts from GelSight-style sensors. The project
 supports the full experimental pipeline:
 
+The authoritative explanation of the research problem, Bayesian baseline,
+original RFS theory, implemented DSEA method, equations, experimental
+methodology, and optimization procedure is in
+[`documents/DSEA_Main_Research_Documentation.md`](documents/DSEA_Main_Research_Documentation.md).
+
 1. Capture tactile images and annotate local geometric features.
 2. Export leakage-resistant train, validation, and test datasets.
 3. Train a ResNet-18 local-feature encoder.
 4. Predict a local feature from each tactile contact.
-5. Accumulate multiple contacts with Bayesian or set-based shape evidence.
+5. Accumulate contacts with single-touch, Bayesian, rule-based, histogram,
+   count-distribution, or diversity-aware set evidence.
 
 The current primitive object classes are `cube`, `sphere`, `cylinder`, `cone`,
 and `square_pyramid`. The local tactile vocabulary is:
@@ -33,9 +39,18 @@ flowchart LR
     F --> G["ResNet-18 feature encoder"]
     G --> H["predict.py"]
     H --> I["Single-touch feature"]
+    C --> M["rfs_dataset.py"]
+    M --> N["Generated RFS train / validation / test trials"]
+    N --> K
     I --> J["Bayesian accumulation"]
+    I --> O["Single-touch baseline"]
+    I --> P["Rule-based accumulation"]
+    I --> Q["Bag-of-features accumulation"]
     I --> K["Set Evidence accumulation"]
     J --> L["Primitive shape belief"]
+    O --> L
+    P --> L
+    Q --> L
     K --> L
 ```
 
@@ -155,7 +170,11 @@ Optional same-stem sidecars are:
 
 ```text
 models/pth/features.calibration.json  # encoder temperature scaling
+models/pth/features.single_touch.json # model-specific Single Touch Baseline config
+models/pth/features.rules.json        # model-specific Rule-Based config
 models/pth/features.rfs.json          # model-specific Set Evidence config
+models/pth/features.bof.json          # model-specific Bag-of-Features config
+models/pth/features.dm.json           # model-specific Dirichlet-Multinomial config
 ```
 
 Copy or rename both the trained `.pth` file and its `labels.txt` so their stems
@@ -171,7 +190,7 @@ The application provides:
 
 - **Predict**: one-contact local-feature probabilities.
 - **Multi Touch**: one selected shape algorithm updated after each contact.
-- **Compare**: side-by-side Bayesian and Set Evidence results.
+- **Compare**: side-by-side results for every checked registered algorithm.
 - **Settings**: shared sensor, contact, timing, flow, and height controls.
 
 The AI model selector is shared by all prediction views. A touch is accepted
@@ -240,23 +259,100 @@ Multi Touch and Compare views without another hardcoded UI list.
 the encoder's highest-probability local-feature label. Its active likelihood
 table is `algorithms/bayesian/config.json`.
 
-Launch the Bayesian data and optimization tool with:
+Launch the unified optimization application with:
 
 ```powershell
-python tools/optimize_bayesian.py
+python optimize.py
 ```
 
-The tool can:
-
-- Record manually explored touch sequences.
-- Scan annotation metadata for unique local features per object class.
-- Edit the class-specific feature vocabulary used for generation.
-- Generate reproducible random touch sequences.
-- Optimize `P(feature | shape)` with gradient descent.
-- Save immutable timestamped run artifacts and update the active config.
+The application fits Bayesian likelihoods from the selected training trials,
+selects smoothing on validation prefixes, evaluates an optional frozen test
+split, and exports the same metrics and charts used for the other algorithms.
+Use `rfs_dataset.py` to scan metadata and generate or split trial files.
 
 Randomly generated combinations are useful for software development. Physical,
 independently collected trials are required for defensible performance claims.
+
+### Single Touch Baseline
+
+`algorithms/single_touch_baseline/` maps the latest top local-feature label
+directly to shape probabilities and ignores all earlier touches. It is the
+sanity-check lower bound for multi-touch methods: every stronger accumulator
+should justify its extra history by beating this latest-touch reference.
+
+Configure it in `algorithms/single_touch_baseline/config.json`, or place a
+model-specific sidecar beside the selected weights as
+`<model>.single_touch.json`. The main table is `feature_posteriors`, one
+normalized shape-probability row per local feature. The optimizer estimates
+those rows from training touch counts, then selects additive smoothing and
+`score_temperature` on validation prefix NLL:
+
+```powershell
+python optimize.py --run --model models\pth\features.pth --algorithms single_touch_baseline
+```
+
+See `algorithms/single_touch_baseline/README.md`.
+
+### Rule-Based
+
+`algorithms/rule_based/` accumulates observed features with explicit positive
+and negative rules for each shape. For example, `double_curvature` strongly
+supports `sphere`, while edge, vertex, rim, or apex observations can penalize
+it. This gives a transparent baseline between single-touch lookup and learned
+histogram/count models.
+
+Configure it in `algorithms/rule_based/config.json`, or place a model-specific
+sidecar beside the selected weights as `<model>.rules.json`. Each
+`rules.<shape>` block contains nonnegative `positive` and `negative` feature
+weights. Runtime parameters control the global positive multiplier, negative
+multiplier, repeated-feature contribution, and final softmax temperature.
+
+Optimize it with:
+
+```powershell
+python optimize.py --run --model models\pth\features.pth --algorithms rule_based
+```
+
+The optimizer fits signed feature-presence log-odds from training trials, splits
+them into positive and negative rule tables, and selects smoothing,
+`repetition_weight`, and `score_temperature` on validation prefix NLL. See
+`algorithms/rule_based/README.md`.
+
+### Bag of Features
+
+`algorithms/bag_of_features/` converts the accumulated hard labels into a
+normalized tactile-word histogram. It compares that histogram with each shape
+prototype using Jensen-Shannon divergence and converts the resulting scores to
+probabilities. The method is permutation invariant and intentionally uses
+feature frequency without DSEA's separate diversity term.
+
+The default configuration is `algorithms/bag_of_features/config.json`. Put a
+model-specific configuration beside the selected weights as `<model>.bof.json`.
+Optimize it from the shared hard-label trials with:
+
+```powershell
+python optimize.py --run --model models\pth\features.pth --algorithms bag_of_features
+```
+
+The optimizer fits shape histogram prototypes from training trials, then
+selects additive smoothing and `distance_temperature` on validation prefix NLL.
+See `algorithms/bag_of_features/README.md`.
+
+### Dirichlet-Multinomial
+
+`algorithms/dirichlet_multinomial/` evaluates the complete unordered
+feature-count vector under one class-specific Dirichlet-Multinomial model per
+shape. Its concentration parameters allow repeated contacts to be less
+independent than they are under the sequential Bayesian baseline.
+
+The default configuration is `algorithms/dirichlet_multinomial/config.json`.
+Put a model-specific configuration beside the selected weights as
+`<model>.dm.json`.
+Optimize it with:
+
+```powershell
+python optimize.py
+```
 
 ### Set Evidence (RFS-inspired)
 
@@ -277,14 +373,46 @@ The default schema-v2 configuration is `algorithms/rfs/config.json`. Set
 Evidence consumes only the encoder's top feature label. It deliberately ignores
 the encoder softmax confidence and its temperature-calibration sidecar.
 
+Generate an RFS optimization dataset from annotated metadata with:
+
+```powershell
+python rfs_dataset.py
+```
+
+The tool reuses the Bayesian metadata scanner and random touch-sequence
+generator. It finds every unique `custom_fields.local_feature` for each object
+class, supports editing those class vocabularies, generates variable-length
+sequences, and writes the three files expected by the optimizer:
+
+```text
+trials/rfs_train.json
+trials/rfs_validation.json
+trials/rfs_test.json
+```
+
+Train, validation, and test percentages are stratified by shape. Exact duplicate
+shape/sequence combinations are kept in one split to prevent synthetic sequence
+leakage. Generated records contain only `shape` and `sequence`.
+
 Core fitting and evaluation APIs are available in:
 
 - `algorithms.rfs.fitting.fit_rfs_config`
 - `algorithms.rfs.evaluation.evaluate_rfs_trials`
+- `algorithms.rfs.optimization.optimize_rfs_config`
 - `algorithms.rfs.trials.append_trial`
 
-There is currently no standalone RFS fitting CLI. Use these APIs from Python or
-add a dedicated tool before documenting a command-line workflow.
+Optimize any or all registered methods with:
+
+```powershell
+python optimize.py
+```
+
+Browse for the model weights and train, validation, and optional test trial
+files. The application saves numbered runs under
+`optimize/<model-name>/run_<number>/`, including dataset snapshots, optimized
+configs, complete JSON and CSV metrics, per-run predictions, confusion matrices,
+evaluation reports, and PNG/SVG charts. The Results tab displays headline
+metrics and lets you inspect each generated chart or export the complete run.
 
 See `algorithms/rfs/README.md` for equations and configuration semantics.
 
@@ -327,17 +455,26 @@ python tools/calibrate.py
 | `config/<sensor>.json` | Camera source and sensor-processing settings |
 | `config/custom_fields.json` | Annotation metadata field definitions |
 | `algorithms/bayesian/config.json` | Active Bayesian likelihood table |
+| `algorithms/single_touch_baseline/config.json` | Default latest-touch feature-to-shape table |
+| `algorithms/rule_based/config.json` | Default transparent positive/negative feature rules |
+| `algorithms/bag_of_features/config.json` | Default tactile histogram prototypes |
+| `algorithms/dirichlet_multinomial/config.json` | Default class concentration vectors |
 | `algorithms/rfs/config.json` | Default Set Evidence templates and parameters |
 | `<model>.txt` | Encoder class labels in output-index order |
 | `<model>.calibration.json` | Optional encoder temperature calibration |
+| `<model>.single_touch.json` | Optional model-specific Single Touch Baseline configuration |
+| `<model>.rules.json` | Optional model-specific Rule-Based configuration |
 | `<model>.rfs.json` | Optional model-specific Set Evidence configuration |
+| `<model>.bof.json` | Optional model-specific Bag-of-Features configuration |
+| `<model>.dm.json` | Optional model-specific Dirichlet-Multinomial configuration |
 
 ## Testing
 
 The test suite covers grouped dataset splitting, algorithm registration,
-Bayesian artifact paths and generated sequences, Set Evidence equations and
-permutation invariance, RFS configuration/fitting/evaluation/trial persistence,
-and model temperature calibration.
+single-touch, rule-based, Bag-of-Features, Bayesian artifact paths and
+generated sequences, Set Evidence equations and permutation invariance, RFS
+configuration/fitting/evaluation/trial persistence, and model temperature
+calibration.
 
 ```powershell
 python -m unittest discover -s tests -v
@@ -350,6 +487,8 @@ PyTorch must be installed because the model-calibration tests import it.
 ```text
 Touchlab-VTS/
   annotate.py                 Current annotation and data-capture application
+  optimize.py                 Unified algorithm optimization and reporting UI
+  rfs_dataset.py              Metadata-driven RFS sequence generator and splitter
   preprocess.py               Metadata scanner and grouped dataset exporter
   train.py                    ResNet-18 training and evaluation
   predict.py                  Single- and multi-touch prediction application
@@ -357,6 +496,10 @@ Touchlab-VTS/
   algorithms/
     registry.py               Dynamic shape-algorithm registry
     bayesian/                 Bayesian baseline, optimizer artifacts, configs
+    single_touch_baseline/    Latest-touch baseline and optimizer
+    rule_based/               Transparent rule classifier and optimizer
+    bag_of_features/          Histogram-prototype classifier and config
+    dirichlet_multinomial/    Exchangeable count classifier and config
     rfs/                      Set Evidence config, fitting, trials, evaluation
   config/                     Sensor profiles and annotation fields
   dataset/                    Raw and exported datasets (gitignored)
@@ -369,7 +512,6 @@ Touchlab-VTS/
     calibrate.py              Camera intrinsic calibration UI
     dataset_splitting.py      Acquisition-group-aware splitting
     model_calibration.py      Temperature scaling and calibration metrics
-    optimize_bayesian.py      Bayesian sequence generator and optimizer
   train/                      Timestamped training runs
 ```
 

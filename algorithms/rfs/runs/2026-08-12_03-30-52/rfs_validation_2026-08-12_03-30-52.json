@@ -1,0 +1,362 @@
+[
+  {
+    "shape": "cone",
+    "sequence": [
+      "sharp_apex",
+      "sharp_apex",
+      "sharp_apex",
+      "circular_rim",
+      "circular_rim",
+      "sharp_apex",
+      "circular_rim",
+      "circular_rim"
+    ]
+  },
+  {
+    "shape": "sphere",
+    "sequence": [
+      "double_curvature",
+      "double_curvature",
+      "double_curvature",
+      "double_curvature"
+    ]
+  },
+  {
+    "shape": "cube",
+    "sequence": [
+      "straight_edge",
+      "multi_face_vertex",
+      "straight_edge",
+      "multi_face_vertex",
+      "planar",
+      "straight_edge",
+      "straight_edge"
+    ]
+  },
+  {
+    "shape": "cone",
+    "sequence": [
+      "single_curvature",
+      "sharp_apex",
+      "circular_rim"
+    ]
+  },
+  {
+    "shape": "cube",
+    "sequence": [
+      "multi_face_vertex",
+      "planar",
+      "multi_face_vertex"
+    ]
+  },
+  {
+    "shape": "cone",
+    "sequence": [
+      "circular_rim",
+      "single_curvature",
+      "single_curvature",
+      "circular_rim",
+      "single_curvature"
+    ]
+  },
+  {
+    "shape": "cylinder",
+    "sequence": [
+      "planar",
+      "single_curvature",
+      "single_curvature",
+      "circular_rim",
+      "single_curvature",
+      "planar"
+    ]
+  },
+  {
+    "shape": "cylinder",
+    "sequence": [
+      "planar",
+      "single_curvature",
+      "planar",
+      "planar",
+      "circular_rim",
+      "circular_rim"
+    ]
+  },
+  {
+    "shape": "cube",
+    "sequence": [
+      "multi_face_vertex",
+      "straight_edge",
+      "planar",
+      "straight_edge",
+      "planar",
+      "straight_edge"
+    ]
+  },
+  {
+    "shape": "square_pyramid",
+    "sequence": [
+      "sharp_apex",
+      "planar",
+      "multi_face_vertex",
+      "multi_face_vertex"
+    ]
+  },
+  {
+    "shape": "sphere",
+    "sequence": [
+      "double_curvature",
+      "double_curvature",
+      "double_curvature",
+      "double_curvature"
+    ]
+  },
+  {
+    "shape": "cube",
+    "sequence": [
+      "straight_edge",
+      "planar",
+      "straight_edge"
+    ]
+  },
+  {
+    "shape": "cylinder",
+    "sequence": [
+      "circular_rim",
+      "planar",
+      "planar",
+      "circular_rim"
+    ]
+  },
+  {
+    "shape": "square_pyramid",
+    "sequence": [
+      "straight_edge",
+      "straight_edge",
+      "straight_edge",
+      "sharp_apex",
+      "multi_face_vertex",
+      "straight_edge",
+      "multi_face_vertex"
+    ]
+  },
+  {
+    "shape": "cylinder",
+    "sequence": [
+      "planar",
+      "planar",
+      "planar",
+      "planar"
+    ]
+  },
+  {
+    "shape": "sphere",
+    "sequence": [
+      "double_curvature",
+      "double_curvature",
+      "double_curvature",
+      "double_curvature"
+    ]
+  },
+  {
+    "shape": "cube",
+    "sequence": [
+      "multi_face_vertex",
+      "multi_face_vertex",
+      "straight_edge"
+    ]
+  },
+  {
+    "shape": "cone",
+    "sequence": [
+      "sharp_apex",
+      "circular_rim",
+      "sharp_apex",
+      "single_curvature",
+      "sharp_apex",
+      "circular_rim",
+      "circular_rim"
+    ]
+  },
+  {
+    "shape": "cylinder",
+    "sequence": [
+      "planar",
+      "planar",
+      "planar",
+      "planar",
+      "circular_rim",
+      "circular_rim",
+      "single_curvature",
+      "circular_rim"
+    ]
+  },
+  {
+    "shape": "cone",
+    "sequence": [
+      "sharp_apex",
+      "circular_rim",
+      "single_curvature",
+      "single_curvature"
+    ]
+  },
+  {
+    "shape": "cube",
+    "sequence": [
+      "multi_face_vertex",
+      "planar",
+      "multi_face_vertex"
+    ]
+  },
+  {
+    "shape": "cone",
+    "sequence": [
+      "circular_rim",
+      "single_curvature",
+      "circular_rim",
+      "single_curvature",
+      "single_curvature",
+      "single_curvature"
+    ]
+  },
+  {
+    "shape": "sphere",
+    "sequence": [
+      "double_curvature",
+      "double_curvature",
+      "double_curvature",
+      "double_curvature"
+    ]
+  },
+  {
+    "shape": "square_pyramid",
+    "sequence": [
+      "sharp_apex",
+      "sharp_apex",
+      "sharp_apex",
+      "multi_face_vertex"
+    ]
+  },
+  {
+    "shape": "square_pyramid",
+    "sequence": [
+      "straight_edge",
+      "multi_face_vertex",
+      "multi_face_vertex",
+      "straight_edge"
+    ]
+  },
+  {
+    "shape": "cylinder",
+    "sequence": [
+      "circular_rim",
+      "planar",
+      "circular_rim",
+      "single_curvature",
+      "single_curvature",
+      "single_curvature",
+      "planar",
+      "single_curvature"
+    ]
+  },
+  {
+    "shape": "cone",
+    "sequence": [
+      "single_curvature",
+      "sharp_apex",
+      "circular_rim"
+    ]
+  },
+  {
+    "shape": "cone",
+    "sequence": [
+      "sharp_apex",
+      "sharp_apex",
+      "sharp_apex",
+      "circular_rim"
+    ]
+  },
+  {
+    "shape": "sphere",
+    "sequence": [
+      "double_curvature",
+      "double_curvature",
+      "double_curvature",
+      "double_curvature"
+    ]
+  },
+  {
+    "shape": "sphere",
+    "sequence": [
+      "double_curvature",
+      "double_curvature",
+      "double_curvature",
+      "double_curvature"
+    ]
+  },
+  {
+    "shape": "cube",
+    "sequence": [
+      "planar",
+      "multi_face_vertex",
+      "multi_face_vertex"
+    ]
+  },
+  {
+    "shape": "square_pyramid",
+    "sequence": [
+      "multi_face_vertex",
+      "sharp_apex",
+      "planar",
+      "sharp_apex"
+    ]
+  },
+  {
+    "shape": "square_pyramid",
+    "sequence": [
+      "straight_edge",
+      "multi_face_vertex",
+      "sharp_apex",
+      "sharp_apex",
+      "sharp_apex"
+    ]
+  },
+  {
+    "shape": "cylinder",
+    "sequence": [
+      "circular_rim",
+      "planar",
+      "planar",
+      "planar"
+    ]
+  },
+  {
+    "shape": "square_pyramid",
+    "sequence": [
+      "straight_edge",
+      "straight_edge",
+      "straight_edge",
+      "sharp_apex",
+      "sharp_apex",
+      "planar",
+      "straight_edge",
+      "multi_face_vertex"
+    ]
+  },
+  {
+    "shape": "cylinder",
+    "sequence": [
+      "single_curvature",
+      "planar",
+      "planar"
+    ]
+  },
+  {
+    "shape": "cube",
+    "sequence": [
+      "multi_face_vertex",
+      "multi_face_vertex",
+      "planar",
+      "multi_face_vertex"
+    ]
+  }
+]

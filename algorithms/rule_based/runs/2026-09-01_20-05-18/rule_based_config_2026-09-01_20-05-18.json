@@ -1,0 +1,142 @@
+{
+  "schema_version": 1,
+  "name": "repetition_weight_optimized_2026-09-01_20-05-18",
+  "features": [
+    "planar",
+    "single_curvature",
+    "double_curvature",
+    "straight_edge",
+    "circular_rim",
+    "multi_face_vertex",
+    "sharp_apex"
+  ],
+  "shapes": [
+    "cube",
+    "sphere",
+    "cylinder",
+    "cone",
+    "square_pyramid"
+  ],
+  "aliases": {
+    "multiface_vertex": "multi_face_vertex",
+    "multi-face-vertex": "multi_face_vertex",
+    "multi_face_corner": "multi_face_vertex",
+    "apex": "sharp_apex",
+    "rim": "circular_rim"
+  },
+  "rules": {
+    "cube": {
+      "positive": {
+        "planar": 1.2394123661803624,
+        "single_curvature": 0.0,
+        "double_curvature": 0.0,
+        "straight_edge": 3.810441855450504,
+        "circular_rim": 0.0,
+        "multi_face_vertex": 3.814489484663742,
+        "sharp_apex": 0.0
+      },
+      "negative": {
+        "planar": 0.0,
+        "single_curvature": 8.53159624394821,
+        "double_curvature": 7.666888748900517,
+        "straight_edge": 0.0,
+        "circular_rim": 8.501079980143365,
+        "multi_face_vertex": 0.0,
+        "sharp_apex": 8.51635915831264
+      }
+    },
+    "sphere": {
+      "positive": {
+        "planar": 0.0,
+        "single_curvature": 0.0,
+        "double_curvature": 18.976026290226347,
+        "straight_edge": 0.0,
+        "circular_rim": 0.0,
+        "multi_face_vertex": 0.0,
+        "sharp_apex": 0.0
+      },
+      "negative": {
+        "planar": 10.389455338054299,
+        "single_curvature": 8.32109611660339,
+        "double_curvature": 0.0,
+        "straight_edge": 8.4240153098219,
+        "circular_rim": 8.291315084776262,
+        "multi_face_vertex": 8.306228876844797,
+        "sharp_apex": 8.306228876844797
+      }
+    },
+    "cylinder": {
+      "positive": {
+        "planar": 1.332929112676537,
+        "single_curvature": 3.541598529354733,
+        "double_curvature": 0.0,
+        "straight_edge": 0.0,
+        "circular_rim": 2.7857070621425013,
+        "multi_face_vertex": 0.0,
+        "sharp_apex": 0.0
+      },
+      "negative": {
+        "planar": 0.0,
+        "single_curvature": 0.0,
+        "double_curvature": 7.629198411621019,
+        "straight_edge": 8.59599826280117,
+        "circular_rim": 0.0,
+        "multi_face_vertex": 8.475770500599426,
+        "sharp_apex": 8.475770500599426
+      }
+    },
+    "cone": {
+      "positive": {
+        "planar": 0.9470181941153969,
+        "single_curvature": 2.1406007001913494,
+        "double_curvature": 0.0,
+        "straight_edge": 0.0,
+        "circular_rim": 2.570368876802417,
+        "multi_face_vertex": 0.0,
+        "sharp_apex": 2.653211530448237
+      },
+      "negative": {
+        "planar": 0.0,
+        "single_curvature": 0.0,
+        "double_curvature": 7.629198411621019,
+        "straight_edge": 8.59599826280117,
+        "circular_rim": 0.0,
+        "multi_face_vertex": 8.475770500599426,
+        "sharp_apex": 0.0
+      }
+    },
+    "square_pyramid": {
+      "positive": {
+        "planar": 0.7018983624343653,
+        "single_curvature": 0.0,
+        "double_curvature": 0.0,
+        "straight_edge": 2.3450469577591484,
+        "circular_rim": 0.0,
+        "multi_face_vertex": 1.8607708536138627,
+        "sharp_apex": 2.841414357684436
+      },
+      "negative": {
+        "planar": 0.0,
+        "single_curvature": 8.470351698921924,
+        "double_curvature": 7.6100838266115165,
+        "straight_edge": 0.0,
+        "circular_rim": 8.44006547679693,
+        "multi_face_vertex": 0.0,
+        "sharp_apex": 0.0
+      }
+    }
+  },
+  "class_prior": {
+    "cube": 0.20991109167759803,
+    "sphere": 0.18076082203760385,
+    "cylinder": 0.20408103774959918,
+    "cone": 0.20408103774959918,
+    "square_pyramid": 0.20116601078559976
+  },
+  "parameters": {
+    "positive_weight": 1.0,
+    "negative_weight": 1.0,
+    "repetition_weight": 0.5,
+    "score_temperature": 2.2877676025409683
+  }
+}

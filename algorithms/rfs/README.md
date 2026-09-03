@@ -152,9 +152,18 @@ hard-label trial files to avoid silently mixing two mathematical models.
 
 ## Trial Files
 
-Prepare independently collected trials as hard-label JSON sequences. The RFS
-trial recorder is not part of `predict.py`; trial collection and annotation
-must be performed separately before fitting the templates.
+Generate hard-label optimization sequences from the annotated metadata dataset
+with:
+
+```powershell
+python rfs_dataset.py
+```
+
+The tool uses the same metadata scanner and random sequence generator as the
+Bayesian optimizer. It reads `custom_fields.local_feature`, lets each class's
+feature vocabulary be edited, and performs a reproducible shape-stratified
+train/validation/test split. Exact duplicate sequences for one shape remain in
+one split. The output records contain no image metadata.
 
 ```json
 [
@@ -165,7 +174,7 @@ must be performed separately before fitting the templates.
 ]
 ```
 
-Store independent physical exploration trials in:
+The generated split files are:
 
 ```text
 trials/rfs_train.json
@@ -177,18 +186,56 @@ Synthetic combinations are suitable for software checks, not performance
 claims. Evaluation requires independently collected object trials under a
 written handheld touch policy.
 
-## Fit Templates
+## Optimize From Trials
 
-Fit frequency and presence templates from training trials:
+The optimizer uses deterministic local-feature labels only. It never reads
+ResNet softmax confidence or an encoder calibration sidecar. Run the complete
+staged optimization with:
 
 ```powershell
-python fit_rfs_config.py `
-  --trials trials/rfs_train.json `
-  --model models/pth/features.pth
+python optimize.py
 ```
 
-This creates the model sidecar `features.rfs.json`. No encoder calibration file
-is required by the set algorithm.
+The stages are deliberately separated:
+
+1. Training trials fit `theta_templates` with Dirichlet smoothing and
+   `presence_templates` with a Beta-Bernoulli trial-presence model.
+2. Validation prefixes select smoothing, relative evidence/coverage weights,
+   and the unexpected-feature penalty using class-balanced negative log loss.
+3. The object-level softmax temperature is fitted after score selection. This
+   temperature calibrates shape belief, not the local ResNet output.
+4. A validation grid selects the stopping rule with the fewest mean touches
+   subject to accepted-accuracy and acceptance-rate requirements.
+
+The original order plus reproducibly shuffled copies of each validation trial
+are evaluated. Final fixed-set classification remains permutation-invariant;
+the permutations measure how acquisition order affects early stopping.
+
+Each run is saved under:
+
+```text
+optimize/<model-name>/run_<number>/rfs/
+```
+
+The RFS folder in the unified run contains the optimized config and complete
+JSON/CSV evaluation report. Immutable training, validation, and optional test
+snapshots are stored once in the run's `inputs/` folder. When sidecar
+installation is enabled, the optimized configuration is also installed as
+`features.rfs.json` beside the selected weights. `predict.py` automatically
+loads this sidecar.
+
+An untouched test file may be evaluated after parameters are frozen:
+
+```powershell
+python optimize.py
+```
+
+Do not repeatedly run test evaluation while changing parameters. That turns the
+test set into another validation set.
+
+By default, `lambda_evidence` is fixed at `1.0`. With a uniform class prior,
+its absolute scale overlaps with `score_temperature`; fixing one scale makes
+the remaining parameters easier to identify.
 
 ## Direct Use
 

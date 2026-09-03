@@ -1,10 +1,15 @@
 import json
 import os
+from pathlib import Path
 
 class BayesianShapePredictor:
-    def __init__(self):
+    def __init__(self, config_path=None):
         # Bayesian Shape State
-        self.config_path = os.path.join(os.path.dirname(__file__), "config.json")
+        self.config_path = os.fspath(
+            Path(config_path).expanduser().resolve()
+            if config_path
+            else Path(__file__).with_name("config.json")
+        )
         self.load_config()
         self.reset()
         
@@ -31,7 +36,10 @@ class BayesianShapePredictor:
         
     def reset(self):
         """Resets the probabilities to a flat prior (20% for 5 shapes)."""
-        self.shape_probs = {shape: 0.2 for shape in ["cube", "sphere", "cylinder", "cone", "square_pyramid"]}
+        shapes = tuple(next(iter(self.SHAPE_LIKELIHOODS.values())).keys())
+        self.shape_probs = {shape: 1.0 / len(shapes) for shape in shapes}
+        self.features = tuple(self.SHAPE_LIKELIHOODS)
+        self.aliases = {"multiface_vertex": "multi_face_vertex"}
 
     def update(self, predicted_feature: str) -> dict:
         """

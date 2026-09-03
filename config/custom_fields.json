@@ -19,6 +19,7 @@
             "double_curvature",
             "straight_edge",
             "circular_rim",
+            "double_circular_rim",
             "multiface_vertex",
             "sharp_apex"
         ],

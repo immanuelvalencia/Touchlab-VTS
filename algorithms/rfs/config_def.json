@@ -1,0 +1,140 @@
+{
+  "schema_version": 2,
+  "name": "primitive_shapes_hard_labels_v2",
+  "features": [
+    "planar",
+    "single_curvature",
+    "double_curvature",
+    "straight_edge",
+    "circular_rim",
+    "multi_face_vertex",
+    "sharp_apex"
+  ],
+  "shapes": [
+    "cube",
+    "sphere",
+    "cylinder",
+    "cone",
+    "square_pyramid"
+  ],
+  "aliases": {
+    "multiface_vertex": "multi_face_vertex",
+    "multi-face-vertex": "multi_face_vertex",
+    "multi_face_corner": "multi_face_vertex",
+    "apex": "sharp_apex",
+    "rim": "circular_rim"
+  },
+  "theta_templates": {
+    "cube": {
+      "planar": 0.34,
+      "single_curvature": 0.02,
+      "double_curvature": 0.01,
+      "straight_edge": 0.29,
+      "circular_rim": 0.01,
+      "multi_face_vertex": 0.32,
+      "sharp_apex": 0.01
+    },
+    "sphere": {
+      "planar": 0.01,
+      "single_curvature": 0.07,
+      "double_curvature": 0.88,
+      "straight_edge": 0.01,
+      "circular_rim": 0.01,
+      "multi_face_vertex": 0.01,
+      "sharp_apex": 0.01
+    },
+    "cylinder": {
+      "planar": 0.20,
+      "single_curvature": 0.51,
+      "double_curvature": 0.01,
+      "straight_edge": 0.01,
+      "circular_rim": 0.25,
+      "multi_face_vertex": 0.01,
+      "sharp_apex": 0.01
+    },
+    "cone": {
+      "planar": 0.12,
+      "single_curvature": 0.50,
+      "double_curvature": 0.01,
+      "straight_edge": 0.01,
+      "circular_rim": 0.24,
+      "multi_face_vertex": 0.01,
+      "sharp_apex": 0.11
+    },
+    "square_pyramid": {
+      "planar": 0.34,
+      "single_curvature": 0.02,
+      "double_curvature": 0.01,
+      "straight_edge": 0.30,
+      "circular_rim": 0.01,
+      "multi_face_vertex": 0.10,
+      "sharp_apex": 0.22
+    }
+  },
+  "presence_templates": {
+    "cube": {
+      "planar": 1.0,
+      "single_curvature": 0.0,
+      "double_curvature": 0.0,
+      "straight_edge": 1.0,
+      "circular_rim": 0.0,
+      "multi_face_vertex": 1.0,
+      "sharp_apex": 0.0
+    },
+    "sphere": {
+      "planar": 0.0,
+      "single_curvature": 0.15,
+      "double_curvature": 1.0,
+      "straight_edge": 0.0,
+      "circular_rim": 0.0,
+      "multi_face_vertex": 0.0,
+      "sharp_apex": 0.0
+    },
+    "cylinder": {
+      "planar": 0.6,
+      "single_curvature": 1.0,
+      "double_curvature": 0.0,
+      "straight_edge": 0.0,
+      "circular_rim": 1.0,
+      "multi_face_vertex": 0.0,
+      "sharp_apex": 0.0
+    },
+    "cone": {
+      "planar": 0.4,
+      "single_curvature": 1.0,
+      "double_curvature": 0.0,
+      "straight_edge": 0.0,
+      "circular_rim": 1.0,
+      "multi_face_vertex": 0.0,
+      "sharp_apex": 1.0
+    },
+    "square_pyramid": {
+      "planar": 1.0,
+      "single_curvature": 0.0,
+      "double_curvature": 0.0,
+      "straight_edge": 1.0,
+      "circular_rim": 0.0,
+      "multi_face_vertex": 0.6,
+      "sharp_apex": 1.0
+    }
+  },
+  "class_prior": {
+    "cube": 0.2,
+    "sphere": 0.2,
+    "cylinder": 0.2,
+    "cone": 0.2,
+    "square_pyramid": 0.2
+  },
+  "parameters": {
+    "lambda_evidence": 1.0,
+    "lambda_coverage": 0.5,
+    "unexpected_penalty": 0.25,
+    "score_temperature": 1.0,
+    "stop_threshold": 0.85,
+    "entropy_threshold": 0.55,
+    "min_touches": 3,
+    "stability_window": 3,
+    "max_touches": 8,
+    "eps": 1e-8
+  }
+}

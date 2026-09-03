@@ -36,12 +36,12 @@ class AlgorithmSpec:
         candidate = Path(model_path).with_suffix(self.model_config_suffix)
         return str(candidate) if candidate.is_file() else ""
 
-    def create(self, model_path: str = "") -> Any:
+    def create(self, model_path: str = "", config_path: str = "") -> Any:
         module = importlib.import_module(self.module_path)
         if self.factory_name:
             factory = getattr(module, self.factory_name)
-            config_path = self.config_path_for_model(model_path)
-            instance = factory(config_path=config_path or None)
+            selected_config = config_path or self.config_path_for_model(model_path)
+            instance = factory(config_path=selected_config or None)
         else:
             algorithm_class = getattr(module, self.class_name)
             instance = algorithm_class()
@@ -137,11 +137,81 @@ def get_algorithm_by_display_name(display_name: str) -> AlgorithmSpec:
 register_algorithm(
     key="bayesian",
     display_name="Bayesian",
-    module_path="algorithms.bayesian.algorithm",
-    class_name="BayesianShapePredictor",
+    module_path="algorithms.bayesian.factory",
+    factory_name="create_algorithm",
+    model_config_suffix=".bayesian.json",
     update_method="update",
     input_type="hard_label",
     description="Sequential Bayesian update using the highest-probability feature label.",
+)
+
+register_algorithm(
+    key="naive_bayes",
+    display_name="Naive Bayes",
+    module_path="algorithms.naive_bayes.factory",
+    factory_name="create_algorithm",
+    model_config_suffix=".nb.json",
+    update_method="update",
+    input_type="probabilities",
+    description="Baseline Naive Bayes accumulation of local tactile feature evidence.",
+)
+
+register_algorithm(
+    key="modified_naive_bayes",
+    display_name="Modified Naive Bayes",
+    module_path="algorithms.modified_naive_bayes.factory",
+    factory_name="create_algorithm",
+    model_config_suffix=".mnb.json",
+    update_method="update",
+    input_type="probabilities",
+    description=(
+        "Naive Bayes with repeated-touch damping, feature weighting, "
+        "coverage evidence, and unexpected-feature penalties."
+    ),
+)
+
+register_algorithm(
+    key="single_touch_baseline",
+    display_name="Single Touch Baseline",
+    module_path="algorithms.single_touch_baseline.factory",
+    factory_name="create_algorithm",
+    model_config_suffix=".single_touch.json",
+    update_method="update",
+    input_type="hard_label",
+    description="Latest-touch-only reference classifier for local-feature to shape mapping.",
+)
+
+register_algorithm(
+    key="rule_based",
+    display_name="Rule-Based",
+    module_path="algorithms.rule_based.factory",
+    factory_name="create_algorithm",
+    model_config_suffix=".rules.json",
+    update_method="update",
+    input_type="hard_label",
+    description="Transparent additive rules over observed positive and negative tactile features.",
+)
+
+register_algorithm(
+    key="bag_of_features",
+    display_name="Bag of Features",
+    module_path="algorithms.bag_of_features.factory",
+    factory_name="create_algorithm",
+    model_config_suffix=".bof.json",
+    update_method="update",
+    input_type="hard_label",
+    description="Permutation-invariant classification of tactile feature histograms.",
+)
+
+register_algorithm(
+    key="dirichlet_multinomial",
+    display_name="Dirichlet-Multinomial",
+    module_path="algorithms.dirichlet_multinomial.factory",
+    factory_name="create_algorithm",
+    model_config_suffix=".dm.json",
+    update_method="update",
+    input_type="hard_label",
+    description="Exchangeable count-vector classification with Dirichlet overdispersion.",
 )
 
 register_algorithm(

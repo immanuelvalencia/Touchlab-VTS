@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "name": "primitive_shapes_dirichlet_multinomial_v1",
+  "features": [
+    "planar",
+    "single_curvature",
+    "double_curvature",
+    "straight_edge",
+    "circular_rim",
+    "multi_face_vertex",
+    "sharp_apex"
+  ],
+  "shapes": ["cube", "sphere", "cylinder", "cone", "square_pyramid"],
+  "aliases": {
+    "multiface_vertex": "multi_face_vertex",
+    "multi-face-vertex": "multi_face_vertex",
+    "multi_face_corner": "multi_face_vertex",
+    "apex": "sharp_apex",
+    "rim": "circular_rim"
+  },
+  "alpha_templates": {
+    "cube": {
+      "planar": 3.4,
+      "single_curvature": 0.2,
+      "double_curvature": 0.1,
+      "straight_edge": 2.9,
+      "circular_rim": 0.1,
+      "multi_face_vertex": 3.2,
+      "sharp_apex": 0.1
+    },
+    "sphere": {
+      "planar": 0.1,
+      "single_curvature": 0.7,
+      "double_curvature": 8.8,
+      "straight_edge": 0.1,
+      "circular_rim": 0.1,
+      "multi_face_vertex": 0.1,
+      "sharp_apex": 0.1
+    },
+    "cylinder": {
+      "planar": 2.0,
+      "single_curvature": 5.1,
+      "double_curvature": 0.1,
+      "straight_edge": 0.1,
+      "circular_rim": 2.5,
+      "multi_face_vertex": 0.1,
+      "sharp_apex": 0.1
+    },
+    "cone": {
+      "planar": 1.2,
+      "single_curvature": 5.0,
+      "double_curvature": 0.1,
+      "straight_edge": 0.1,
+      "circular_rim": 2.4,
+      "multi_face_vertex": 0.1,
+      "sharp_apex": 1.1
+    },
+    "square_pyramid": {
+      "planar": 3.4,
+      "single_curvature": 0.2,
+      "double_curvature": 0.1,
+      "straight_edge": 3.0,
+      "circular_rim": 0.1,
+      "multi_face_vertex": 1.0,
+      "sharp_apex": 2.2
+    }
+  },
+  "class_prior": {
+    "cube": 0.2,
+    "sphere": 0.2,
+    "cylinder": 0.2,
+    "cone": 0.2,
+    "square_pyramid": 0.2
+  },
+  "parameters": {
+    "score_temperature": 1.0
+  }
+}

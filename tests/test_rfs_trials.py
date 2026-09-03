@@ -64,6 +64,5 @@ class RFSTrialPersistenceTests(unittest.TestCase):
 
         self.assertEqual(counts, {"train": 0, "validation": 0, "test": 2})
 
-
 if __name__ == "__main__":
     unittest.main()

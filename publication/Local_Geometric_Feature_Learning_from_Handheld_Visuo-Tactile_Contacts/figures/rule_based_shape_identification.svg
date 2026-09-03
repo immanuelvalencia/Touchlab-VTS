@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="360" viewBox="0 0 1100 360" role="img" aria-labelledby="title desc">
+  <title id="title">Rule-based primitive-shape identification pipeline</title>
+  <desc id="desc">A tactile contact is classified into a local feature by ResNet-18. Observed features are counted and scored with positive and negative shape rules to produce shape probabilities.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#30343b"/>
+    </marker>
+    <style>
+      .box { fill: #f7f8fa; stroke: #30343b; stroke-width: 1.4; rx: 10; }
+      .box-dark { fill: #e8eef7; stroke: #30343b; stroke-width: 1.4; rx: 10; }
+      .rule-positive { fill: #e8f5ed; stroke: #2f7d46; stroke-width: 1.2; rx: 8; }
+      .rule-negative { fill: #f9ecec; stroke: #b04444; stroke-width: 1.2; rx: 8; }
+      .title { font-family: Arial, Helvetica, sans-serif; font-size: 17px; font-weight: 700; fill: #111827; }
+      .label { font-family: Arial, Helvetica, sans-serif; font-size: 14px; fill: #111827; }
+      .small { font-family: Arial, Helvetica, sans-serif; font-size: 12px; fill: #374151; }
+      .arrow { stroke: #30343b; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <text x="550" y="28" text-anchor="middle" class="title">Rule-Based Primitive-Shape Identification</text>
+
+  <rect x="35" y="85" width="130" height="92" class="box"/>
+  <text x="100" y="114" text-anchor="middle" class="label">Tactile</text>
+  <text x="100" y="135" text-anchor="middle" class="label">contact</text>
+  <text x="100" y="158" text-anchor="middle" class="small">raw image</text>
+
+  <line x1="165" y1="131" x2="215" y2="131" class="arrow"/>
+
+  <rect x="215" y="85" width="145" height="92" class="box-dark"/>
+  <text x="287.5" y="113" text-anchor="middle" class="label">ResNet-18</text>
+  <text x="287.5" y="134" text-anchor="middle" class="label">classifier</text>
+  <text x="287.5" y="158" text-anchor="middle" class="small">local feature</text>
+
+  <line x1="360" y1="131" x2="410" y2="131" class="arrow"/>
+
+  <rect x="410" y="85" width="150" height="92" class="box"/>
+  <text x="485" y="113" text-anchor="middle" class="label">Observed</text>
+  <text x="485" y="134" text-anchor="middle" class="label">feature counts</text>
+  <text x="485" y="158" text-anchor="middle" class="small">one update per touch</text>
+
+  <line x1="560" y1="131" x2="610" y2="131" class="arrow"/>
+
+  <rect x="610" y="60" width="190" height="145" class="box"/>
+  <text x="705" y="88" text-anchor="middle" class="label">Rule table</text>
+  <rect x="633" y="108" width="144" height="32" class="rule-positive"/>
+  <text x="705" y="129" text-anchor="middle" class="small">supporting features add</text>
+  <rect x="633" y="153" width="144" height="32" class="rule-negative"/>
+  <text x="705" y="174" text-anchor="middle" class="small">incompatible features subtract</text>
+
+  <line x1="800" y1="131" x2="850" y2="131" class="arrow"/>
+
+  <rect x="850" y="85" width="110" height="92" class="box"/>
+  <text x="905" y="114" text-anchor="middle" class="label">Shape</text>
+  <text x="905" y="135" text-anchor="middle" class="label">scores</text>
+  <text x="905" y="158" text-anchor="middle" class="small">all classes</text>
+
+  <line x1="960" y1="131" x2="1010" y2="131" class="arrow"/>
+
+  <rect x="1010" y="85" width="70" height="92" class="box-dark"/>
+  <text x="1045" y="114" text-anchor="middle" class="label">Best</text>
+  <text x="1045" y="135" text-anchor="middle" class="label">shape</text>
+  <text x="1045" y="158" text-anchor="middle" class="small">max prob.</text>
+
+  <path d="M 485 177 C 485 245, 705 245, 705 205" class="arrow"/>
+  <text x="595" y="270" text-anchor="middle" class="small">repeated supporting features add a small extra contribution</text>
+
+  <rect x="320" y="300" width="460" height="34" fill="#ffffff" stroke="#9ca3af" stroke-width="1"/>
+  <text x="550" y="322" text-anchor="middle" class="small">Output: probability distribution over cube, sphere, cylinder, cone, and square pyramid</text>
+</svg>

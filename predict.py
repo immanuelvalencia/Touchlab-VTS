@@ -12,6 +12,7 @@ import threading
 import time
 import os
 import json
+import csv
 import importlib
 import sys
 import pathlib
@@ -481,6 +482,26 @@ class PredictionApp:
             else:
                 self.source_var.set("")
 
+    def refresh_camera(self):
+        """Reload sensor definitions and reopen the currently selected camera."""
+        self.status_var.set("Status: Reconnecting Camera...")
+        previous_source = self.source_var.get().strip()
+        self.refresh_sources()
+        source_name = self.source_var.get().strip()
+        if not source_name:
+            self.status_var.set("Status: No Camera Selected")
+            messagebox.showwarning("Camera Refresh", "No camera source is available.")
+            return
+
+        # refresh_sources already opens the first available source when selection changes.
+        if source_name == previous_source:
+            self.on_source_change(None)
+        if self.cap is not None and self.cap.isOpened():
+            self.log_message(f"Reconnected camera source: {source_name}")
+        else:
+            self.status_var.set("Status: Camera Disconnected")
+            self.log_message(f"Failed to reconnect camera source: {source_name}")
+
     def show_main_view(self, view_name):
         if view_name not in self.main_views:
             return
@@ -512,6 +533,10 @@ class PredictionApp:
         self.settings_window.withdraw()
 
     def create_widgets(self):
+        self.algorithm_specs = get_algorithm_specs()
+        if not self.algorithm_specs:
+            raise RuntimeError("No shape algorithms are registered")
+
         # Master Frame
         main_frame = tk.Frame(self.root, bg="#f8f9fa")
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
@@ -721,8 +746,12 @@ class PredictionApp:
         # Tab 4: Prediction capture
         tab_prediction_settings = tk.Frame(notebook, bg="#ffffff")
         notebook.add(tab_prediction_settings, text="Prediction")
+
+        # Tab 5: Shape algorithm configurations
+        tab_algorithm_settings = tk.Frame(notebook, bg="#ffffff")
+        notebook.add(tab_algorithm_settings, text="Algorithms")
         
-        # Tab 5: Height Calib
+        # Tab 6: Height Calib
         tab_height = tk.Frame(notebook, bg="#ffffff")
         notebook.add(tab_height, text="Height")
 
@@ -766,6 +795,92 @@ class PredictionApp:
             bg="#f8f9fa",
             relief=tk.FLAT,
         ).grid(row=1, column=1, padx=8, pady=3, sticky=tk.W)
+
+        algorithm_config_frame = tk.LabelFrame(
+            tab_algorithm_settings,
+            text="Algorithm Configuration Files",
+            bg="#ffffff",
+            fg="#007bff",
+            font=("Segoe UI", 9, "bold"),
+            padx=10,
+            pady=10,
+        )
+        algorithm_config_frame.pack(fill=tk.X, pady=8)
+        algorithm_config_frame.columnconfigure(1, weight=1)
+        tk.Label(
+            algorithm_config_frame,
+            text="Leave a path empty to use the selected model's sidecar, then the bundled default.",
+            bg="#ffffff",
+            fg="#6c757d",
+            font=("Segoe UI", 8),
+            wraplength=680,
+            justify=tk.LEFT,
+        ).grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 9))
+        scan_frame = tk.Frame(algorithm_config_frame, bg="#ffffff")
+        scan_frame.grid(row=1, column=0, columnspan=4, sticky="ew", pady=(0, 8))
+        scan_frame.columnconfigure(1, weight=1)
+        self.optimization_run_var = tk.StringVar(value="No optimization run selected")
+        tk.Button(
+            scan_frame,
+            text="Scan Optimization Run",
+            bg="#007bff",
+            fg="#ffffff",
+            activebackground="#0056b3",
+            activeforeground="#ffffff",
+            relief=tk.FLAT,
+            bd=0,
+            command=self.scan_optimization_run,
+            padx=10,
+            pady=5,
+        ).grid(row=0, column=0, sticky="w")
+        tk.Label(
+            scan_frame,
+            textvariable=self.optimization_run_var,
+            bg="#ffffff",
+            fg="#6c757d",
+            font=("Segoe UI", 8),
+            anchor=tk.W,
+        ).grid(row=0, column=1, sticky="ew", padx=(10, 0))
+        self.algorithm_config_vars = {}
+        for row, spec in enumerate(self.algorithm_specs, start=2):
+            variable = tk.StringVar(value="")
+            self.algorithm_config_vars[spec.key] = variable
+            tk.Label(
+                algorithm_config_frame,
+                text=spec.display_name,
+                bg="#ffffff",
+                fg="#495057",
+                font=("Segoe UI", 9, "bold"),
+                anchor=tk.W,
+            ).grid(row=row, column=0, sticky="w", pady=4, padx=(0, 8))
+            tk.Entry(
+                algorithm_config_frame,
+                textvariable=variable,
+                state="readonly",
+                readonlybackground="#f8f9fa",
+                relief=tk.FLAT,
+                font=("Segoe UI", 8),
+            ).grid(row=row, column=1, sticky="ew", pady=4)
+            tk.Button(
+                algorithm_config_frame,
+                text="Browse",
+                bg="#e9ecef",
+                fg="#495057",
+                relief=tk.FLAT,
+                bd=0,
+                width=8,
+                command=lambda selected=spec: self.browse_algorithm_config(selected),
+            ).grid(row=row, column=2, padx=(6, 3), pady=4)
+            tk.Button(
+                algorithm_config_frame,
+                text="Auto",
+                bg="#ffffff",
+                fg="#495057",
+                relief=tk.FLAT,
+                bd=1,
+                width=6,
+                command=lambda selected=spec: self.clear_algorithm_config(selected),
+            ).grid(row=row, column=3, padx=(3, 0), pady=4)
         
         # --- PREDICTION TAB ---
         pred_title = tk.Label(tab_prediction, text="Inference Engine", font=("Segoe UI", 11, "bold"), bg="#ffffff", fg="#007bff")
@@ -804,9 +919,6 @@ class PredictionApp:
 
         # Shape Algorithm Selection
         tk.Label(tab_multi_prediction, text="Shape Algorithm:", bg="#ffffff", fg="#495057", font=("Segoe UI", 9, "bold")).pack(anchor=tk.W, pady=(5, 0))
-        self.algorithm_specs = get_algorithm_specs()
-        if not self.algorithm_specs:
-            raise RuntimeError("No shape algorithms are registered")
         algorithm_names = [spec.display_name for spec in self.algorithm_specs]
         self.shape_algo_var = tk.StringVar(value=algorithm_names[0])
         self.cb_shape_algo = ttk.Combobox(
@@ -818,7 +930,7 @@ class PredictionApp:
         self.cb_shape_algo.pack(fill=tk.X, pady=(2, 8))
         self.cb_shape_algo.bind("<<ComboboxSelected>>", self.on_shape_algo_selected)
         self.shape_algo_spec = self.algorithm_specs[0]
-        self.shape_algo = self.shape_algo_spec.create()
+        self.shape_algo = self.create_shape_algorithm(self.shape_algo_spec)
 
         # Status Display
         self.multi_status_var = tk.StringVar(value="Waiting for Object...")
@@ -830,17 +942,28 @@ class PredictionApp:
         self.lbl_global_shape = tk.Label(tab_multi_prediction, textvariable=self.global_shape_var, font=("Segoe UI", 12, "bold"), bg="#007bff", fg="#ffffff", pady=10, wraplength=280)
         self.lbl_global_shape.pack(fill=tk.X, pady=(5, 5))
 
-        # Reset Button
-        self.btn_reset_multi = tk.Button(tab_multi_prediction, text="Reset Trial", bg="#dc3545", fg="white", font=("Segoe UI", 10, "bold"), relief=tk.FLAT, command=self.reset_multi_trial)
-        self.btn_reset_multi.pack(fill=tk.X, pady=(5, 10))
+        # Trial action buttons
+        multi_actions = tk.Frame(tab_multi_prediction, bg="#ffffff")
+        multi_actions.pack(fill=tk.X, pady=(5, 10))
+        self.btn_reset_multi = tk.Button(multi_actions, text="Reset Trial", bg="#dc3545", fg="white", font=("Segoe UI", 10, "bold"), relief=tk.FLAT, command=self.reset_multi_trial)
+        self.btn_reset_multi.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 4))
+        self.btn_export_multi = tk.Button(multi_actions, text="Export CSV", bg="#198754", fg="white", font=("Segoe UI", 10, "bold"), relief=tk.FLAT, command=self.export_multi_touch_csv)
+        self.btn_export_multi.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(4, 0))
 
         # Touch History Table
         tk.Label(tab_multi_prediction, text="Touch History:", bg="#ffffff", fg="#495057", font=("Segoe UI", 9, "bold")).pack(anchor=tk.W, pady=(5, 0))
-        self.tree_multi = ttk.Treeview(tab_multi_prediction, columns=("Touch", "Prediction"), show="headings", height=8)
+        self.tree_multi = ttk.Treeview(
+            tab_multi_prediction,
+            columns=("Touch", "Feature", "ShapeConfidence"),
+            show="headings",
+            height=8,
+        )
         self.tree_multi.heading("Touch", text="Touch #")
-        self.tree_multi.heading("Prediction", text="Prediction")
-        self.tree_multi.column("Touch", width=60, anchor=tk.CENTER)
-        self.tree_multi.column("Prediction", width=120, anchor=tk.W)
+        self.tree_multi.heading("Feature", text="Local Feature")
+        self.tree_multi.heading("ShapeConfidence", text="Global Shape Confidence")
+        self.tree_multi.column("Touch", width=58, anchor=tk.CENTER, stretch=False)
+        self.tree_multi.column("Feature", width=135, anchor=tk.W, stretch=True)
+        self.tree_multi.column("ShapeConfidence", width=170, anchor=tk.W, stretch=True)
         self.tree_multi.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
 
         # State Variables
@@ -849,6 +972,7 @@ class PredictionApp:
         self.multi_touch_counter = 0
         self.multi_waiting_for_removal = False
         self.multi_trial_stopped = False
+        self.multi_touch_history = []
 
         # --- SHAPE COMPARISON TAB ---
         compare_title = tk.Label(tab_comparison, text="Compare Shape Algorithms", font=("Segoe UI", 11, "bold"), bg="#ffffff", fg="#6f42c1")
@@ -995,7 +1119,7 @@ class PredictionApp:
         self.btn_manage_sensors = tk.Button(src_frame, text="⚙ Manage Sensors", bg="#e9ecef", fg="#495057", font=("Segoe UI", 9, "bold"), relief=tk.FLAT, bd=0, command=self.open_sensor_manager)
         self.btn_manage_sensors.pack(side=tk.RIGHT, padx=(5, 0))
         
-        self.btn_refresh_sensors = tk.Button(src_frame, text="🔄 Refresh", bg="#e9ecef", fg="#495057", font=("Segoe UI", 9, "bold"), relief=tk.FLAT, bd=0, command=self.refresh_sources)
+        self.btn_refresh_sensors = tk.Button(src_frame, text="Refresh Camera", bg="#e9ecef", fg="#495057", font=("Segoe UI", 9, "bold"), relief=tk.FLAT, bd=0, command=self.refresh_camera)
         self.btn_refresh_sensors.pack(side=tk.RIGHT, padx=(5, 0))
         
         # Baseline Buttons
@@ -1406,8 +1530,21 @@ class PredictionApp:
         
         config_path = os.path.join(os.path.dirname(__file__), "config", "config.json")
         try:
+            global_settings = {}
+            if os.path.isfile(config_path):
+                with open(config_path, "r", encoding="utf-8") as f:
+                    loaded_settings = json.load(f)
+                if isinstance(loaded_settings, dict):
+                    global_settings.update(loaded_settings)
+            global_settings["source"] = source_name
+            global_settings["algorithm_configs"] = {
+                key: variable.get().strip()
+                for key, variable in self.algorithm_config_vars.items()
+                if variable.get().strip()
+            }
             with open(config_path, "w") as f:
-                json.dump({"source": source_name}, f, indent=4)
+                json.dump(global_settings, f, indent=4)
+            self.reload_shape_algorithms()
             self.status_var.set("Status: Sensor Settings Saved")
             self.root.after(2000, lambda: self.status_var.set("Status: Ready"))
         except Exception as e:
@@ -1550,6 +1687,12 @@ class PredictionApp:
             
             if "source" in settings:
                 self.source_var.set(str(settings["source"]))
+            algorithm_configs = settings.get("algorithm_configs", {})
+            if isinstance(algorithm_configs, dict):
+                for key, variable in getattr(self, "algorithm_config_vars", {}).items():
+                    value = algorithm_configs.get(key, "")
+                    variable.set(str(value) if value else "")
+                self.reload_shape_algorithms()
         except Exception as e:
             print(f"Failed to load global config: {e}")
 
@@ -1782,6 +1925,140 @@ class PredictionApp:
         for class_name, prob in sorted_probs:
             self.tree_probs.insert("", tk.END, values=(class_name, f"{prob:.1f}%"))
 
+    def create_shape_algorithm(self, spec):
+        variable = getattr(self, "algorithm_config_vars", {}).get(spec.key)
+        config_path = variable.get().strip() if variable is not None else ""
+        return spec.create(
+            model_path=self.model_var.get(),
+            config_path=config_path,
+        )
+
+    def reload_shape_algorithms(self):
+        if hasattr(self, "shape_algo_var"):
+            self.on_shape_algo_selected()
+        if hasattr(self, "compare_algorithm_vars"):
+            self.reset_compare_trial()
+
+    def scan_optimization_run(self):
+        optimize_directory = os.path.join(_root_dir, "optimize")
+        selected = filedialog.askdirectory(
+            initialdir=(
+                optimize_directory
+                if os.path.isdir(optimize_directory)
+                else _root_dir
+            ),
+            title="Select Optimization Run or Model Folder",
+        )
+        if not selected:
+            return
+
+        selected_path = pathlib.Path(selected).resolve()
+        if (selected_path / "run_manifest.json").is_file():
+            run_path = selected_path
+        else:
+            manifests = list(selected_path.rglob("run_manifest.json"))
+            if manifests:
+                latest_manifest = max(
+                    manifests,
+                    key=lambda path: path.stat().st_mtime,
+                )
+                run_path = latest_manifest.parent
+            else:
+                run_path = selected_path
+
+        specs_by_key = {spec.key: spec for spec in self.algorithm_specs}
+        detected = {}
+        for config_path in run_path.rglob("optimized_config.json"):
+            key = config_path.parent.name
+            if key in specs_by_key:
+                current = detected.get(key)
+                if current is None or config_path.stat().st_mtime > current.stat().st_mtime:
+                    detected[key] = config_path.resolve()
+
+        if not detected:
+            messagebox.showwarning(
+                "Optimization Run",
+                f"No optimized_config.json files were found under:\n{run_path}",
+            )
+            return
+
+        valid = {}
+        invalid = {}
+        for key, config_path in detected.items():
+            spec = specs_by_key[key]
+            try:
+                algorithm = spec.create(config_path=str(config_path))
+                self.validate_algorithm_features(algorithm)
+                valid[key] = config_path
+            except Exception as exc:
+                invalid[key] = str(exc)
+
+        if not valid:
+            details = "\n".join(
+                f"{specs_by_key[key].display_name}: {error}"
+                for key, error in invalid.items()
+            )
+            messagebox.showerror(
+                "Invalid Optimization Run",
+                f"No usable configurations were found.\n\n{details}",
+            )
+            return
+
+        for key, variable in self.algorithm_config_vars.items():
+            variable.set(str(valid[key]) if key in valid else "")
+        self.optimization_run_var.set(str(run_path))
+        self.reload_shape_algorithms()
+
+        loaded_names = [specs_by_key[key].display_name for key in valid]
+        missing_names = [
+            spec.display_name
+            for spec in self.algorithm_specs
+            if spec.key not in detected
+        ]
+        summary = "Loaded: " + ", ".join(loaded_names)
+        if missing_names:
+            summary += "\nAutomatic fallback: " + ", ".join(missing_names)
+        if invalid:
+            summary += "\nInvalid: " + ", ".join(
+                specs_by_key[key].display_name for key in invalid
+            )
+        self.status_var.set(f"Status: Loaded Optimization {run_path.name}")
+        messagebox.showinfo("Optimization Run Loaded", summary)
+
+    def browse_algorithm_config(self, spec):
+        variable = self.algorithm_config_vars[spec.key]
+        current = variable.get().strip()
+        default_directory = os.path.join(_root_dir, "algorithms", spec.key)
+        initial_directory = (
+            os.path.dirname(current)
+            if current
+            else default_directory
+        )
+        file_path = filedialog.askopenfilename(
+            initialdir=initial_directory,
+            title=f"Select {spec.display_name} Configuration",
+            filetypes=(("JSON Configuration", "*.json"), ("All Files", "*.*")),
+        )
+        if not file_path:
+            return
+        try:
+            algorithm = spec.create(config_path=file_path)
+            self.validate_algorithm_features(algorithm)
+        except Exception as exc:
+            messagebox.showerror(
+                "Invalid Algorithm Configuration",
+                f"Could not load {spec.display_name}:\n\n{exc}",
+            )
+            return
+        variable.set(os.path.abspath(file_path))
+        self.reload_shape_algorithms()
+        self.status_var.set(f"Status: Loaded {spec.display_name} Config")
+
+    def clear_algorithm_config(self, spec):
+        self.algorithm_config_vars[spec.key].set("")
+        self.reload_shape_algorithms()
+        self.status_var.set(f"Status: {spec.display_name} Config Automatic")
+
     def browse_weights(self):
         models_directory = os.path.join(_root_dir, "models")
         file_path = filedialog.askopenfilename(
@@ -1874,9 +2151,7 @@ class PredictionApp:
     def on_shape_algo_selected(self, event=None):
         try:
             self.shape_algo_spec = get_algorithm_by_display_name(self.shape_algo_var.get())
-            self.shape_algo = self.shape_algo_spec.create(
-                model_path=self.model_var.get()
-            )
+            self.shape_algo = self.create_shape_algorithm(self.shape_algo_spec)
             self.validate_algorithm_features(self.shape_algo)
             config_path = getattr(self.shape_algo, "config_path", None)
             if config_path:
@@ -1933,11 +2208,88 @@ class PredictionApp:
                     f"Global Shape: {prediction.upper()} ({best_prob:.1f}%){stop_text}"
                 )
 
+    def summarize_shape_result(self, result):
+        if not result:
+            return "unknown", 0.0, {}, False, False, ""
+
+        if isinstance(result, dict):
+            probabilities = {str(name): float(prob) for name, prob in result.items()}
+            prediction = max(probabilities, key=probabilities.get)
+            return (
+                prediction,
+                probabilities[prediction] * 100.0,
+                probabilities,
+                False,
+                False,
+                "",
+            )
+
+        belief = getattr(result, "belief", None) or {}
+        probabilities = {str(name): float(prob) for name, prob in belief.items()}
+        prediction = getattr(result, "prediction", None)
+        if not prediction and probabilities:
+            prediction = max(probabilities, key=probabilities.get)
+        prediction = str(prediction or "unknown")
+        confidence = probabilities.get(prediction, 0.0) * 100.0
+        return (
+            prediction,
+            confidence,
+            probabilities,
+            bool(getattr(result, "should_stop", False)),
+            bool(getattr(result, "is_uncertain", False)),
+            str(getattr(result, "stopping_reason", "") or ""),
+        )
+
+    def export_multi_touch_csv(self):
+        if not getattr(self, "multi_touch_history", None):
+            messagebox.showinfo("Export Multi Touch", "No multi-touch predictions to export.")
+            return
+
+        import datetime
+
+        default_name = f"multi_touch_predictions_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        file_path = filedialog.asksaveasfilename(
+            title="Export Multi-Touch Predictions",
+            defaultextension=".csv",
+            initialfile=default_name,
+            filetypes=(("CSV Files", "*.csv"), ("All Files", "*.*")),
+        )
+        if not file_path:
+            return
+
+        fieldnames = [
+            "touch",
+            "feature",
+            "global_shape_confidence",
+        ]
+
+        try:
+            with open(file_path, "w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(handle, fieldnames=fieldnames)
+                writer.writeheader()
+                for record in self.multi_touch_history:
+                    writer.writerow({
+                        "touch": record["touch"],
+                        "feature": record["top_local_feature"],
+                        "global_shape_confidence": (
+                            f"{record['predicted_shape']} "
+                            f"({record['shape_confidence_percent']:.1f}%)"
+                        ),
+                    })
+        except Exception as exc:
+            messagebox.showerror("Export Multi Touch", f"Failed to export CSV:\n\n{exc}")
+            return
+
+        self.status_var.set(f"Status: Exported Multi Touch CSV")
+        self.log_message(f"Exported multi-touch predictions to {file_path}")
+        messagebox.showinfo("Export Multi Touch", f"Saved CSV:\n{file_path}")
+
     def reset_multi_trial(self):
         for item in self.tree_multi.get_children():
             self.tree_multi.delete(item)
         self.multi_touch_counter = 0
         self.multi_trial_stopped = False
+        self.multi_touch_history = []
         if hasattr(self, 'shape_algo') and hasattr(self.shape_algo, 'reset'):
             self.shape_algo.reset()
         self.global_shape_var.set("Global Shape: Unknown (0%)")
@@ -1951,8 +2303,7 @@ class PredictionApp:
             if enabled is None or not enabled.get():
                 continue
             try:
-                model_path = self.model_var.get()
-                algorithm = spec.create(model_path=model_path)
+                algorithm = self.create_shape_algorithm(spec)
                 self.validate_algorithm_features(algorithm)
                 algorithms[spec.key] = (spec, algorithm)
             except Exception as exc:
@@ -2276,6 +2627,7 @@ class PredictionApp:
             from PIL import Image
             import torch
             import datetime
+            from tools.model_calibration import apply_temperature
             
             if len(frame.shape) == 2:
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
@@ -2288,7 +2640,10 @@ class PredictionApp:
             tensor = self.val_transform(img).unsqueeze(0).to(self.device)
             
             with torch.no_grad():
-                logits = self.current_model(tensor)
+                logits = apply_temperature(
+                    self.current_model(tensor),
+                    getattr(self, "encoder_temperature", 1.0),
+                )
                 probs = torch.nn.functional.softmax(logits, dim=1)[0]
                 
             results = {}
@@ -2298,30 +2653,72 @@ class PredictionApp:
                 
             if results:
                 top_class = max(results, key=results.get)
+                timestamp = datetime.datetime.now().isoformat(timespec="seconds")
                 
                 def append_multi_result():
                     self.multi_touch_counter += 1
-                    self.tree_multi.insert("", tk.END, values=(self.multi_touch_counter, top_class.upper()))
-                    self.tree_multi.yview_moveto(1) # Auto scroll to bottom
-                    self.multi_status_var.set(f"Predicted: {top_class.upper()}")
+                    feature_probs = {name: prob / 100.0 for name, prob in results.items()}
+                    updated_result = None
                     
                     if (
                         getattr(self, "shape_algo", None) is not None
                         and getattr(self, "shape_algo_spec", None) is not None
                     ):
-                        feature_probs = {name: prob / 100.0 for name, prob in results.items()}
                         updated_result = self.shape_algo_spec.update(
                             self.shape_algo,
                             feature_probabilities=feature_probs,
                             top_feature=top_class,
                         )
                         self.update_global_shape_display(updated_result)
-                        if getattr(updated_result, "should_stop", False):
-                            self.multi_trial_stopped = True
-                            if getattr(updated_result, "is_uncertain", False):
-                                self.multi_status_var.set("Trial stopped: uncertain")
-                            else:
-                                self.multi_status_var.set("Trial stopped: accepted")
+
+                    (
+                        predicted_shape,
+                        shape_confidence,
+                        shape_probabilities,
+                        should_stop,
+                        is_uncertain,
+                        stopping_reason,
+                    ) = self.summarize_shape_result(updated_result)
+                    self.tree_multi.insert(
+                        "",
+                        tk.END,
+                        values=(
+                            self.multi_touch_counter,
+                            top_class.upper(),
+                            f"{predicted_shape.upper()} ({shape_confidence:.1f}%)",
+                        ),
+                    )
+                    self.tree_multi.yview_moveto(1) # Auto scroll to bottom
+
+                    self.multi_touch_history.append(
+                        {
+                            "touch": self.multi_touch_counter,
+                            "timestamp": timestamp,
+                            "algorithm": (
+                                self.shape_algo_spec.display_name
+                                if getattr(self, "shape_algo_spec", None) is not None
+                                else ""
+                            ),
+                            "top_local_feature": top_class,
+                            "feature_probabilities": feature_probs,
+                            "predicted_shape": predicted_shape,
+                            "shape_confidence_percent": shape_confidence,
+                            "shape_probabilities": shape_probabilities,
+                            "should_stop": should_stop,
+                            "is_uncertain": is_uncertain,
+                            "stopping_reason": stopping_reason,
+                        }
+                    )
+
+                    self.multi_status_var.set(
+                        f"Touch {self.multi_touch_counter}: {predicted_shape.upper()} ({shape_confidence:.1f}%)"
+                    )
+                    if should_stop:
+                        self.multi_trial_stopped = True
+                        if is_uncertain:
+                            self.multi_status_var.set("Trial stopped: uncertain")
+                        else:
+                            self.multi_status_var.set("Trial stopped: accepted")
                     
                 self.root.after(0, append_multi_result)
         except Exception as e:

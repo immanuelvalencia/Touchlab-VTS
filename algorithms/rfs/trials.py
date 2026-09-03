@@ -49,6 +49,37 @@ def load_trials(path) -> list[dict]:
     return value
 
 
+def save_trials(path, trials: Iterable[Mapping]) -> Path:
+    """Atomically replaces one trial JSON file with shape/sequence records."""
+    selected_path = Path(path).expanduser().resolve()
+    serialized = []
+    for index, trial in enumerate(trials, start=1):
+        if not isinstance(trial, Mapping):
+            raise ValueError(f"Trial {index} must be an object")
+        shape = str(trial.get("shape", "")).strip().lower()
+        sequence = trial.get("sequence")
+        if not shape:
+            raise ValueError(f"Trial {index} shape cannot be empty")
+        if not isinstance(sequence, list) or not sequence:
+            raise ValueError(f"Trial {index} sequence must be a non-empty list")
+        if any(not isinstance(feature, str) or not feature.strip() for feature in sequence):
+            raise ValueError(f"Trial {index} contains an invalid feature label")
+        serialized.append(
+            {
+                "shape": shape,
+                "sequence": [feature.strip().lower() for feature in sequence],
+            }
+        )
+
+    selected_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = selected_path.with_suffix(selected_path.suffix + ".tmp")
+    with temporary.open("w", encoding="utf-8") as handle:
+        json.dump(serialized, handle, indent=4)
+        handle.write("\n")
+    os.replace(temporary, selected_path)
+    return selected_path
+
+
 def append_trial(
     root,
     *,
@@ -71,12 +102,7 @@ def append_trial(
     path = trial_file(root, split)
     trials = load_trials(path)
     trials.append({"shape": normalized_shape, "sequence": normalized_sequence})
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    with temporary.open("w", encoding="utf-8") as handle:
-        json.dump(trials, handle, indent=4)
-        handle.write("\n")
-    os.replace(temporary, path)
+    save_trials(path, trials)
     return path, len(trials)
 
 

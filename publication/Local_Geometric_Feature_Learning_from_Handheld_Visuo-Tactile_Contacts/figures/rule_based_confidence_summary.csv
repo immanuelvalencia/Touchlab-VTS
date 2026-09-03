@@ -1,0 +1,6 @@
+shape,touch_range_to_threshold,accepted_touch,confidence_threshold,final_confidence,unique_features
+cone,3-4,3,0.9,0.9984774315372328,single_curvature; sharp_apex; circular_rim; planar
+cube,3-4,3,0.9,0.9706877507866272,multi_face_vertex; straight_edge; planar
+cylinder,3-4,3,0.9,0.9046479649111951,single_curvature; circular_rim; planar
+sphere,2-3,2,0.9,0.9979472750079821,double_curvature; single_curvature
+square_pyramid,3-4,3,0.9,0.993307062554643,sharp_apex; straight_edge; planar; multi_face_vertex

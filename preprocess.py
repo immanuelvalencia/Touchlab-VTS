@@ -1,6 +1,8 @@
 import os
+import argparse
 import shutil
 import json
+import sys
 import threading
 from pathlib import Path
 import tkinter as tk
@@ -9,11 +11,232 @@ from PIL import Image
 
 from tools.dataset_splitting import DatasetRecord, grouped_split, metadata_group_id
 
+
+def _metadata_files(input_path, recursive=True):
+    if recursive:
+        return list(input_path.rglob("*metadata.json"))
+    return list(input_path.glob("*metadata.json"))
+
+
+def _sample_label(metadata, category_by):
+    if category_by == "local_feature":
+        custom_fields = metadata.get("custom_fields", {})
+        label = custom_fields.get("local_feature", "")
+    else:
+        label = metadata.get("label", "")
+    label = str(label).strip()
+    return label or None
+
+
+def scan_dataset(
+    input_dir,
+    *,
+    category_by="label",
+    feature_suffix="raw.png",
+    recursive=True,
+    include_video=False,
+):
+    """Collect exportable image records grouped by object label or local feature."""
+    input_path = Path(input_dir)
+    label_to_files = {}
+
+    for meta_file in _metadata_files(input_path, recursive=recursive):
+        try:
+            with open(meta_file, "r", encoding="utf-8") as f:
+                meta = json.load(f)
+        except Exception:
+            continue
+
+        if not include_video and meta.get("is_video_sequence", False):
+            continue
+
+        label = _sample_label(meta, category_by)
+        if not label or label.lower() == "unknown":
+            continue
+
+        saved_features = meta.get("saved_features", [])
+        target_file = None
+        for saved_f in saved_features:
+            if saved_f.endswith(feature_suffix):
+                target_file = meta_file.parent / saved_f
+                break
+
+        if target_file and target_file.exists():
+            sensor_prefix = meta.get("sensor", "UnknownSensor")
+            label_to_files.setdefault(label, []).append(
+                DatasetRecord(
+                    source_file=target_file,
+                    sensor_prefix=sensor_prefix,
+                    group_id=metadata_group_id(meta_file, meta),
+                )
+            )
+
+    return label_to_files
+
+
+def process_image_file(src_file, dst_file, augmentation=None):
+    if augmentation:
+        with Image.open(src_file) as img:
+            if augmentation == "rot180":
+                img = img.rotate(180)
+            elif augmentation == "hflip":
+                img = img.transpose(Image.FLIP_LEFT_RIGHT)
+            elif augmentation == "vflip":
+                img = img.transpose(Image.FLIP_TOP_BOTTOM)
+            img.save(dst_file)
+    else:
+        shutil.copy2(src_file, dst_file)
+
+
+def export_records(
+    label_to_files,
+    output_dir,
+    *,
+    train_ratio=0.8,
+    val_ratio=0.1,
+    test_ratio=0.1,
+    seed=42,
+    category_by="label",
+    feature_suffix="raw.png",
+    augmentations=(),
+):
+    output_path = Path(output_dir)
+    for split_dir in ["train", "val", "test"]:
+        os.makedirs(output_path / split_dir, exist_ok=True)
+
+    split_manifest = {
+        "schema_version": 1,
+        "category_by": category_by,
+        "feature_suffix": feature_suffix,
+        "grouping": "acquisition",
+        "seed": seed,
+        "ratios": {
+            "train": train_ratio,
+            "val": val_ratio,
+            "test": test_ratio,
+        },
+        "classes": {},
+    }
+
+    exported_count = 0
+    for label, files_list in label_to_files.items():
+        splits = grouped_split(
+            files_list,
+            train_ratio=train_ratio,
+            val_ratio=val_ratio,
+            test_ratio=test_ratio,
+            seed=seed,
+        )
+        split_manifest["classes"][label] = {
+            split_name: sorted({record.group_id for record in subset})
+            for split_name, subset in splits.items()
+        }
+
+        for split_name, subset in splits.items():
+            target_dir = output_path / split_name / label
+            os.makedirs(target_dir, exist_ok=True)
+
+            for record in subset:
+                src_file = record.source_file
+                sensor_prefix = record.sensor_prefix
+                base_name = f"{sensor_prefix}_{src_file.name}"
+                process_image_file(src_file, target_dir / base_name)
+                exported_count += 1
+
+                if split_name == "train":
+                    name_no_ext, ext = os.path.splitext(src_file.name)
+                    for augmentation in augmentations:
+                        aug_file = target_dir / f"{sensor_prefix}_{name_no_ext}_{augmentation}{ext}"
+                        process_image_file(src_file, aug_file, augmentation)
+                        exported_count += 1
+
+    labels = sorted(label_to_files.keys())
+    with open(output_path / "labels.txt", "w", encoding="utf-8") as f:
+        for label in labels:
+            f.write(f"{label}\n")
+
+    with open(output_path / "split_manifest.json", "w", encoding="utf-8") as handle:
+        json.dump(split_manifest, handle, indent=4)
+        handle.write("\n")
+
+    return exported_count
+
+
+def parse_args(argv):
+    parser = argparse.ArgumentParser(
+        description="Export a grouped visuo-tactile image dataset from metadata."
+    )
+    parser.add_argument("--input_dir", default="dataset", help="Directory containing metadata files.")
+    parser.add_argument("--output_dir", default="ml_dataset", help="Output dataset directory.")
+    parser.add_argument(
+        "--category",
+        choices=("label", "local_feature"),
+        default="label",
+        help="Class folder source for the export.",
+    )
+    parser.add_argument(
+        "--by-local-feature",
+        action="store_true",
+        help="Shortcut for --category local_feature.",
+    )
+    parser.add_argument("--feature-suffix", default="raw.png", help="Saved image suffix to export.")
+    parser.add_argument("--no-recursive", action="store_true", help="Do not scan subfolders.")
+    parser.add_argument("--include-video", action="store_true", help="Include video-sequence frames.")
+    parser.add_argument("--train", type=float, default=0.8, help="Training split ratio.")
+    parser.add_argument("--val", type=float, default=0.1, help="Validation split ratio.")
+    parser.add_argument("--test", type=float, default=0.1, help="Test split ratio.")
+    parser.add_argument("--seed", type=int, default=42, help="Grouped split seed.")
+    parser.add_argument("--augment-rot180", action="store_true", help="Add 180-degree rotations to train.")
+    parser.add_argument("--augment-hflip", action="store_true", help="Add horizontal flips to train.")
+    parser.add_argument("--augment-vflip", action="store_true", help="Add vertical flips to train.")
+    return parser.parse_args(argv)
+
+
+def run_cli(argv):
+    args = parse_args(argv)
+    category_by = "local_feature" if args.by_local_feature else args.category
+
+    label_to_files = scan_dataset(
+        args.input_dir,
+        category_by=category_by,
+        feature_suffix=args.feature_suffix,
+        recursive=not args.no_recursive,
+        include_video=args.include_video,
+    )
+    if not label_to_files:
+        print("No valid files found for export.")
+        return 1
+
+    augmentations = []
+    if args.augment_rot180:
+        augmentations.append("rot180")
+    if args.augment_hflip:
+        augmentations.append("hflip")
+    if args.augment_vflip:
+        augmentations.append("vflip")
+
+    exported_count = export_records(
+        label_to_files,
+        args.output_dir,
+        train_ratio=args.train,
+        val_ratio=args.val,
+        test_ratio=args.test,
+        seed=args.seed,
+        category_by=category_by,
+        feature_suffix=args.feature_suffix,
+        augmentations=augmentations,
+    )
+    print(
+        f"Exported {exported_count} files across {len(label_to_files)} "
+        f"{category_by.replace('_', ' ')} classes to {args.output_dir}."
+    )
+    return 0
+
 class ExportApp:
     def __init__(self, root):
         self.root = root
         self.root.title("VisuoTactile Dataset Exporter")
-        self.root.geometry("800x700")
+        self.root.geometry("840x720")
         
         self.label_to_files = {}
         self.is_exporting = False
@@ -63,13 +286,28 @@ class ExportApp:
         ttk.Entry(split_frame, textvariable=self.val_var, width=5).pack(side=tk.LEFT, padx=5)
         ttk.Entry(split_frame, textvariable=self.test_var, width=5).pack(side=tk.LEFT, padx=5)
         
-        # Categorization
-        cat_frame = ttk.Frame(settings_frame)
-        cat_frame.pack(fill=tk.X, pady=5)
-        ttk.Label(cat_frame, text="Categorize By:").pack(side=tk.LEFT)
-        self.category_var = tk.StringVar(value="label")
-        ttk.Radiobutton(cat_frame, text="Label", variable=self.category_var, value="label", command=self.scan_directory).pack(side=tk.LEFT, padx=5)
-        ttk.Radiobutton(cat_frame, text="Local Feature", variable=self.category_var, value="local_feature", command=self.scan_directory).pack(side=tk.LEFT, padx=5)
+        # Export Mode
+        mode_frame = ttk.LabelFrame(settings_frame, text="Export Mode", padding=5)
+        mode_frame.pack(fill=tk.X, pady=5)
+        self.category_var = tk.StringVar(value="local_feature")
+        ttk.Radiobutton(
+            mode_frame,
+            text="Per Local Feature",
+            variable=self.category_var,
+            value="local_feature",
+            command=self.scan_directory,
+        ).pack(side=tk.LEFT, padx=5)
+        ttk.Radiobutton(
+            mode_frame,
+            text="Per Object Label",
+            variable=self.category_var,
+            value="label",
+            command=self.scan_directory,
+        ).pack(side=tk.LEFT, padx=5)
+        ttk.Label(
+            mode_frame,
+            text="Output folders are named from the selected metadata field.",
+        ).pack(side=tk.LEFT, padx=12)
         
         # Feature Suffix
         feat_frame = ttk.Frame(settings_frame)
@@ -110,7 +348,8 @@ class ExportApp:
         info_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=10, pady=5)
         
         # Classes Listbox
-        class_frame = ttk.LabelFrame(info_frame, text="Detected Classes", padding=5)
+        self.class_frame = ttk.LabelFrame(info_frame, text="Detected Local Features", padding=5)
+        class_frame = self.class_frame
         class_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
         self.class_listbox = tk.Listbox(class_frame)
         self.class_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -119,10 +358,12 @@ class ExportApp:
         self.class_listbox.config(yscrollcommand=scrollbar.set)
         
         # Preview Structure
-        preview_frame = ttk.LabelFrame(info_frame, text="Output Structure Preview", padding=5)
+        self.preview_frame = ttk.LabelFrame(info_frame, text="Local-Feature Output Preview", padding=5)
+        preview_frame = self.preview_frame
         preview_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0))
         self.preview_text = tk.Text(preview_frame, width=40, state=tk.DISABLED)
         self.preview_text.pack(fill=tk.BOTH, expand=True)
+        self.refresh_export_mode_labels()
 
     def browse_input(self):
         dir_path = filedialog.askdirectory(initialdir=self.input_var.get())
@@ -134,6 +375,24 @@ class ExportApp:
         if dir_path:
             self.output_var.set(dir_path)
 
+    def selected_export_label(self):
+        if self.category_var.get() == "local_feature":
+            return "local features"
+        return "object labels"
+
+    def refresh_export_mode_labels(self):
+        is_local_feature = self.category_var.get() == "local_feature"
+        export_label = self.selected_export_label().title()
+        self.class_frame.config(text=f"Detected {export_label}")
+        self.preview_frame.config(text=f"{export_label} Output Preview")
+        if hasattr(self, "export_btn"):
+            button_text = (
+                "Export Local-Feature Dataset"
+                if is_local_feature
+                else "Export Object-Label Dataset"
+            )
+            self.export_btn.config(text=button_text)
+
     def scan_directory(self):
         self.status_var.set("Scanning directory...")
         self.root.update_idletasks()
@@ -144,58 +403,25 @@ class ExportApp:
             self.status_var.set("Error scanning.")
             return
 
-        self.label_to_files = {}
         feature_suffix = self.feature_var.get()
-        include_video = self.include_video_var.get()
-        
-        if self.recursive_var.get():
-            metadata_files = list(input_path.rglob("*metadata.json"))
-        else:
-            metadata_files = list(input_path.glob("*metadata.json"))
-
         category_by = self.category_var.get()
+        self.label_to_files = scan_dataset(
+            input_path,
+            category_by=category_by,
+            feature_suffix=feature_suffix,
+            recursive=self.recursive_var.get(),
+            include_video=self.include_video_var.get(),
+        )
 
-        for meta_file in metadata_files:
-            try:
-                with open(meta_file, "r", encoding="utf-8") as f:
-                    meta = json.load(f)
-            except Exception:
-                continue
-
-            if not include_video and meta.get("is_video_sequence", False):
-                continue
-                
-            if category_by == "local_feature":
-                custom_fields = meta.get("custom_fields", {})
-                label = custom_fields.get("local_feature", "Unknown")
-            else:
-                label = meta.get("label", "Unknown")
-                
-            saved_features = meta.get("saved_features", [])
-            
-            target_file = None
-            for saved_f in saved_features:
-                if saved_f.endswith(feature_suffix):
-                    target_file = meta_file.parent / saved_f
-                    break
-                    
-            if target_file and target_file.exists():
-                if label not in self.label_to_files:
-                    self.label_to_files[label] = []
-                sensor_prefix = meta.get("sensor", "UnknownSensor")
-                self.label_to_files[label].append(
-                    DatasetRecord(
-                        source_file=target_file,
-                        sensor_prefix=sensor_prefix,
-                        group_id=metadata_group_id(meta_file, meta),
-                    )
-                )
-
+        self.refresh_export_mode_labels()
         self.update_class_list()
         self.update_preview()
         
         total_files = sum(len(files) for files in self.label_to_files.values())
-        self.status_var.set(f"Found {total_files} valid files across {len(self.label_to_files)} classes.")
+        self.status_var.set(
+            f"Found {total_files} valid files across "
+            f"{len(self.label_to_files)} {self.selected_export_label()}."
+        )
         
         # Export labels to labels.txt in the input directory immediately after scanning
         try:
@@ -220,11 +446,16 @@ class ExportApp:
         self.preview_text.delete(1.0, tk.END)
         
         if not self.label_to_files:
-            self.preview_text.insert(tk.END, "No classes found to export.")
+            self.refresh_export_mode_labels()
+            self.preview_text.insert(
+                tk.END,
+                f"No {self.selected_export_label()} found to export.",
+            )
             self.preview_text.config(state=tk.DISABLED)
             return
 
-        preview = "ml_dataset/\n"
+        self.refresh_export_mode_labels()
+        preview = f"{Path(self.output_var.get()).name}/\n"
         for split in ['train', 'val', 'test']:
             preview += f"├── {split}/\n"
             for i, label in enumerate(sorted(self.label_to_files.keys())[:3]): # Show top 3
@@ -259,17 +490,7 @@ class ExportApp:
 
     def process_image(self, src_file, dst_file, augmentation=None):
         try:
-            if augmentation:
-                with Image.open(src_file) as img:
-                    if augmentation == 'rot180':
-                        img = img.rotate(180)
-                    elif augmentation == 'hflip':
-                        img = img.transpose(Image.FLIP_LEFT_RIGHT)
-                    elif augmentation == 'vflip':
-                        img = img.transpose(Image.FLIP_TOP_BOTTOM)
-                    img.save(dst_file)
-            else:
-                shutil.copy2(src_file, dst_file)
+            process_image_file(src_file, dst_file, augmentation)
         except Exception as e:
             print(f"Failed to process {src_file}: {e}")
 
@@ -294,6 +515,8 @@ class ExportApp:
         processed_ops = 0
         split_manifest = {
             "schema_version": 1,
+            "category_by": self.category_var.get(),
+            "feature_suffix": self.feature_var.get(),
             "grouping": "acquisition",
             "seed": 42,
             "ratios": {
@@ -388,6 +611,9 @@ class ExportApp:
             messagebox.showinfo("Export Complete", message)
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        raise SystemExit(run_cli(sys.argv[1:]))
+
     root = tk.Tk()
     app = ExportApp(root)
     root.mainloop()

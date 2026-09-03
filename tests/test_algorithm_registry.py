@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from algorithms.registry import (
     get_algorithm,
@@ -11,10 +12,27 @@ class AlgorithmRegistryTests(unittest.TestCase):
     def test_expected_algorithms_are_registered_in_ui_order(self):
         specs = get_algorithm_specs()
 
-        self.assertEqual([spec.key for spec in specs], ["bayesian", "rfs"])
+        self.assertEqual(
+            [spec.key for spec in specs],
+            [
+                "bayesian",
+                "single_touch_baseline",
+                "rule_based",
+                "bag_of_features",
+                "dirichlet_multinomial",
+                "rfs",
+            ],
+        )
         self.assertEqual(
             [spec.display_name for spec in specs],
-            ["Bayesian", "Set Evidence"],
+            [
+                "Bayesian",
+                "Single Touch Baseline",
+                "Rule-Based",
+                "Bag of Features",
+                "Dirichlet-Multinomial",
+                "Set Evidence",
+            ],
         )
 
     def test_lookup_supports_keys_and_display_names(self):
@@ -52,6 +70,38 @@ class AlgorithmRegistryTests(unittest.TestCase):
         self.assertAlmostEqual(sum(result.belief.values()), 1.0)
         self.assertEqual(result.prediction, "sphere")
         self.assertEqual(spec.input_type, "hard_label")
+
+    def test_new_algorithms_dispatch_only_the_top_label(self):
+        for key in (
+            "single_touch_baseline",
+            "rule_based",
+            "bag_of_features",
+            "dirichlet_multinomial",
+        ):
+            with self.subTest(key=key):
+                spec = get_algorithm(key)
+                algorithm = spec.create()
+                result = spec.update(
+                    algorithm,
+                    feature_probabilities={"double_curvature": 0.51, "planar": 0.49},
+                    top_feature="double_curvature",
+                )
+
+                self.assertAlmostEqual(sum(result.values()), 1.0)
+                self.assertEqual(max(result, key=result.get), "sphere")
+                self.assertEqual(algorithm.touch_count, 1)
+                self.assertEqual(spec.input_type, "hard_label")
+
+    def test_explicit_config_path_is_used(self):
+        spec = get_algorithm("rfs")
+        config_path = Path("algorithms/rfs/config.json").resolve()
+
+        algorithm = spec.create(
+            model_path="models/nonexistent.pth",
+            config_path=str(config_path),
+        )
+
+        self.assertEqual(Path(algorithm.config_path), config_path)
 
 
 if __name__ == "__main__":
