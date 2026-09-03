@@ -9,4 +9,5 @@ models/
 ml_dataset/
 dataset/
 documents/
+publications/
 features/
