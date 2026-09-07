@@ -410,5 +410,20 @@ if __name__ == "__main__":
         pass
 
     root = tk.Tk()
+    
+    # Enable High DPI awareness on Linux
+    import sys
+    if sys.platform.startswith("linux"):
+        try:
+            import subprocess
+            xdb = subprocess.check_output(["xrdb", "-query"]).decode()
+            for line in xdb.splitlines():
+                if "Xft.dpi:" in line:
+                    dpi = float(line.split(":")[1].strip())
+                    root.tk.call("tk", "scaling", dpi / 72.0)
+                    break
+        except Exception:
+            pass
+            
     app = TestUIApp(root)
     root.mainloop()
