@@ -14,18 +14,25 @@ from sklearn.metrics import classification_report, confusion_matrix, ConfusionMa
 import json
 import gc
 
-# List of modern models to run if --all is specified
-DEFAULT_SUITE = [
-    'resnet18', 'resnet34', 'resnet50', 'resnet101', 'resnet152',
-    'efficientnet_b0', 'efficientnet_b1', 'efficientnet_b2', 'efficientnet_b3', 'efficientnet_b4', 'efficientnet_b5', 'efficientnet_b6', 'efficientnet_b7',
-    'efficientnet_v2_s', 'efficientnet_v2_m', 'efficientnet_v2_l',
-    'densenet121', 'densenet161', 'densenet169', 'densenet201',
-    'mobilenet_v3_small', 'mobilenet_v3_large',
-    'convnext_tiny', 'convnext_small', 'convnext_base', 'convnext_large',
-    'swin_t', 'swin_s', 'swin_b', 'swin_v2_t', 'swin_v2_s', 'swin_v2_b',
-    'vit_b_16', 'vit_b_32', 'vit_l_16', 'vit_l_32',
-    'regnet_y_400mf', 'regnet_y_800mf', 'regnet_y_1_6gf', 'regnet_y_3_2gf', 'regnet_y_8gf', 'regnet_y_16gf', 'regnet_y_32gf'
+# Define suites for each architecture family
+RESNET_SUITE = ['resnet18', 'resnet34', 'resnet50', 'resnet101', 'resnet152']
+EFFICIENTNET_SUITE = [
+    'efficientnet_b0', 'efficientnet_b1', 'efficientnet_b2', 'efficientnet_b3', 
+    'efficientnet_b4', 'efficientnet_b5', 'efficientnet_b6', 'efficientnet_b7',
+    'efficientnet_v2_s', 'efficientnet_v2_m', 'efficientnet_v2_l'
 ]
+DENSENET_SUITE = ['densenet121', 'densenet161', 'densenet169', 'densenet201']
+MOBILENET_SUITE = ['mobilenet_v3_small', 'mobilenet_v3_large']
+CONVNEXT_SUITE = ['convnext_tiny', 'convnext_small', 'convnext_base', 'convnext_large']
+SWIN_SUITE = ['swin_t', 'swin_s', 'swin_b', 'swin_v2_t', 'swin_v2_s', 'swin_v2_b']
+VIT_SUITE = ['vit_b_16', 'vit_b_32', 'vit_l_16', 'vit_l_32']
+REGNET_SUITE = ['regnet_y_400mf', 'regnet_y_800mf', 'regnet_y_1_6gf', 'regnet_y_3_2gf', 'regnet_y_8gf', 'regnet_y_16gf', 'regnet_y_32gf']
+
+# The comprehensive suite contains everything
+DEFAULT_SUITE = (
+    RESNET_SUITE + EFFICIENTNET_SUITE + DENSENET_SUITE + MOBILENET_SUITE + 
+    CONVNEXT_SUITE + SWIN_SUITE + VIT_SUITE + REGNET_SUITE
+)
 
 def setup_argparse():
     parser = argparse.ArgumentParser(description="Unified Training Suite for Multiple Architectures and Weights.")
@@ -33,6 +40,14 @@ def setup_argparse():
     parser.add_argument('--models', nargs='+', default=[], 
                         help="List of model names to train (e.g., convnext_tiny swin_t).")
     parser.add_argument('--all', action='store_true', help='Train all models in the comprehensive predefined suite.')
+    parser.add_argument('--resnet', action='store_true', help='Train all ResNet variants.')
+    parser.add_argument('--efficientnet', action='store_true', help='Train all EfficientNet variants.')
+    parser.add_argument('--densenet', action='store_true', help='Train all DenseNet variants.')
+    parser.add_argument('--mobilenet', action='store_true', help='Train all MobileNet variants.')
+    parser.add_argument('--convnext', action='store_true', help='Train all ConvNeXt variants.')
+    parser.add_argument('--swin', action='store_true', help='Train all Swin variants.')
+    parser.add_argument('--vit', action='store_true', help='Train all ViT variants.')
+    parser.add_argument('--regnet', action='store_true', help='Train all RegNet variants.')
     parser.add_argument('--epochs', type=int, default=20, help='Number of epochs to train per model/weight variant.')
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size for training and validation.')
     parser.add_argument('--lr', type=float, default=0.001, help='Learning rate.')
@@ -299,12 +314,34 @@ def main():
     args = setup_argparse()
 
     # Determine models to train
+    models_to_train = []
     if args.all or (args.models and 'all' in [m.lower() for m in args.models]):
-        models_to_train = DEFAULT_SUITE
-    elif args.models:
-        models_to_train = args.models
-    else:
-        print("No models specified. Use --models <model1> <model2> or --all to train the default suite.")
+        models_to_train.extend(DEFAULT_SUITE)
+    if args.resnet:
+        models_to_train.extend(RESNET_SUITE)
+    if args.efficientnet:
+        models_to_train.extend(EFFICIENTNET_SUITE)
+    if args.densenet:
+        models_to_train.extend(DENSENET_SUITE)
+    if args.mobilenet:
+        models_to_train.extend(MOBILENET_SUITE)
+    if args.convnext:
+        models_to_train.extend(CONVNEXT_SUITE)
+    if args.swin:
+        models_to_train.extend(SWIN_SUITE)
+    if args.vit:
+        models_to_train.extend(VIT_SUITE)
+    if args.regnet:
+        models_to_train.extend(REGNET_SUITE)
+        
+    if args.models and 'all' not in [m.lower() for m in args.models]:
+        models_to_train.extend(args.models)
+        
+    # Remove duplicates while preserving order
+    models_to_train = list(dict.fromkeys(models_to_train))
+
+    if not models_to_train:
+        print("No models specified. Use --models <model1>, --all, or family flags like --resnet.")
         return
 
     print(f"Queued {len(models_to_train)} models for training evaluation.")
