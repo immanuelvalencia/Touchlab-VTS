@@ -8,6 +8,7 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from PIL import Image
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from tools.dataset_splitting import DatasetRecord, grouped_split, metadata_group_id
 
@@ -119,36 +120,40 @@ def export_records(
     }
 
     exported_count = 0
-    for label, files_list in label_to_files.items():
-        splits = grouped_split(
-            files_list,
-            train_ratio=train_ratio,
-            val_ratio=val_ratio,
-            test_ratio=test_ratio,
-            seed=seed,
-        )
-        split_manifest["classes"][label] = {
-            split_name: sorted({record.group_id for record in subset})
-            for split_name, subset in splits.items()
-        }
+    futures = []
+    with ThreadPoolExecutor() as executor:
+        for label, files_list in label_to_files.items():
+            splits = grouped_split(
+                files_list,
+                train_ratio=train_ratio,
+                val_ratio=val_ratio,
+                test_ratio=test_ratio,
+                seed=seed,
+            )
+            split_manifest["classes"][label] = {
+                split_name: sorted({record.group_id for record in subset})
+                for split_name, subset in splits.items()
+            }
+    
+            for split_name, subset in splits.items():
+                target_dir = output_path / split_name / label
+                os.makedirs(target_dir, exist_ok=True)
+    
+                for record in subset:
+                    src_file = record.source_file
+                    sensor_prefix = record.sensor_prefix
+                    base_name = f"{sensor_prefix}_{src_file.name}"
+                    futures.append(executor.submit(process_image_file, src_file, target_dir / base_name))
+    
+                    if split_name == "train":
+                        name_no_ext, ext = os.path.splitext(src_file.name)
+                        for augmentation in augmentations:
+                            aug_file = target_dir / f"{sensor_prefix}_{name_no_ext}_{augmentation}{ext}"
+                            futures.append(executor.submit(process_image_file, src_file, aug_file, augmentation))
 
-        for split_name, subset in splits.items():
-            target_dir = output_path / split_name / label
-            os.makedirs(target_dir, exist_ok=True)
-
-            for record in subset:
-                src_file = record.source_file
-                sensor_prefix = record.sensor_prefix
-                base_name = f"{sensor_prefix}_{src_file.name}"
-                process_image_file(src_file, target_dir / base_name)
-                exported_count += 1
-
-                if split_name == "train":
-                    name_no_ext, ext = os.path.splitext(src_file.name)
-                    for augmentation in augmentations:
-                        aug_file = target_dir / f"{sensor_prefix}_{name_no_ext}_{augmentation}{ext}"
-                        process_image_file(src_file, aug_file, augmentation)
-                        exported_count += 1
+        for future in as_completed(futures):
+            future.result()
+            exported_count += 1
 
     labels = sorted(label_to_files.keys())
     with open(output_path / "labels.txt", "w", encoding="utf-8") as f:
@@ -527,62 +532,62 @@ class ExportApp:
             "classes": {},
         }
 
-        for label, files_list in self.label_to_files.items():
-            splits = grouped_split(
-                files_list,
-                train_ratio=self.train_var.get(),
-                val_ratio=self.val_var.get(),
-                test_ratio=self.test_var.get(),
-                seed=42,
-            )
-            split_manifest["classes"][label] = {
-                split_name: sorted({record.group_id for record in subset})
-                for split_name, subset in splits.items()
-            }
-            
-            for split_name, subset in splits.items():
-                if not subset:
-                    continue
-                    
-                target_dir = output_path / split_name / label
-                os.makedirs(target_dir, exist_ok=True)
+        with ThreadPoolExecutor() as executor:
+            futures = []
+            for label, files_list in self.label_to_files.items():
+                splits = grouped_split(
+                    files_list,
+                    train_ratio=self.train_var.get(),
+                    val_ratio=self.val_var.get(),
+                    test_ratio=self.test_var.get(),
+                    seed=42,
+                )
+                split_manifest["classes"][label] = {
+                    split_name: sorted({record.group_id for record in subset})
+                    for split_name, subset in splits.items()
+                }
                 
-                for record in subset:
-                    src_file = record.source_file
-                    sensor_prefix = record.sensor_prefix
-                    # Base File
-                    base_name = f"{sensor_prefix}_{src_file.name}"
-                    dst_file = target_dir / base_name
-                    self.process_image(src_file, dst_file)
-                    
-                    processed_ops += 1
-                    
-                    # Augmentations (Only apply to Training set to prevent data leakage/test contamination)
-                    if split_name == 'train':
-                        name_no_ext, ext = os.path.splitext(src_file.name)
+                for split_name, subset in splits.items():
+                    if not subset:
+                        continue
                         
-                        if self.aug_rot180_var.get():
-                            aug_file = target_dir / f"{sensor_prefix}_{name_no_ext}_rot180{ext}"
-                            self.process_image(src_file, aug_file, 'rot180')
-                            processed_ops += 1
+                    target_dir = output_path / split_name / label
+                    os.makedirs(target_dir, exist_ok=True)
+                    
+                    for record in subset:
+                        src_file = record.source_file
+                        sensor_prefix = record.sensor_prefix
+                        # Base File
+                        base_name = f"{sensor_prefix}_{src_file.name}"
+                        dst_file = target_dir / base_name
+                        futures.append(executor.submit(self.process_image, src_file, dst_file))
+                        
+                        # Augmentations (Only apply to Training set to prevent data leakage/test contamination)
+                        if split_name == 'train':
+                            name_no_ext, ext = os.path.splitext(src_file.name)
                             
-                        if self.aug_hflip_var.get():
-                            aug_file = target_dir / f"{sensor_prefix}_{name_no_ext}_hflip{ext}"
-                            self.process_image(src_file, aug_file, 'hflip')
-                            processed_ops += 1
+                            if self.aug_rot180_var.get():
+                                aug_file = target_dir / f"{sensor_prefix}_{name_no_ext}_rot180{ext}"
+                                futures.append(executor.submit(self.process_image, src_file, aug_file, 'rot180'))
+                                
+                            if self.aug_hflip_var.get():
+                                aug_file = target_dir / f"{sensor_prefix}_{name_no_ext}_hflip{ext}"
+                                futures.append(executor.submit(self.process_image, src_file, aug_file, 'hflip'))
+                                
+                            if self.aug_vflip_var.get():
+                                aug_file = target_dir / f"{sensor_prefix}_{name_no_ext}_vflip{ext}"
+                                futures.append(executor.submit(self.process_image, src_file, aug_file, 'vflip'))
+                        else:
+                            # Fast forward progress for val/test that skip augmentations
+                            processed_ops += (operations_per_file - 1)
                             
-                        if self.aug_vflip_var.get():
-                            aug_file = target_dir / f"{sensor_prefix}_{name_no_ext}_vflip{ext}"
-                            self.process_image(src_file, aug_file, 'vflip')
-                            processed_ops += 1
-                    else:
-                        # Fast forward progress for val/test that skip augmentations
-                        processed_ops += (operations_per_file - 1)
-
-                    # Update UI progress
-                    progress_pct = (processed_ops / total_operations) * 100
-                    self.root.after(0, self.progress_var.set, progress_pct)
-                    self.root.after(0, self.status_var.set, f"Exporting... {progress_pct:.1f}%")
+            for future in as_completed(futures):
+                future.result()
+                processed_ops += 1
+                # Update UI progress
+                progress_pct = (processed_ops / total_operations) * 100
+                self.root.after(0, self.progress_var.set, progress_pct)
+                self.root.after(0, self.status_var.set, f"Exporting... {progress_pct:.1f}%")
 
         labels = sorted(list(self.label_to_files.keys()))
         labels_file = output_path / "labels.txt"
