@@ -132,25 +132,34 @@ split.
 
 ### 4. Train the local-feature encoder
 
+You can train the default ResNet-18 model or choose a specific ResNet architecture.
+
+**Using the default script (ResNet-18):**
 ```powershell
 python train.py --dataset_dir ml_dataset --epochs 20 --batch_size 32
+```
+
+**Using the dynamic script (Any ResNet):**
+```powershell
+python train_resnet.py --model_name resnet50 --dataset_dir ml_dataset --epochs 30 --batch_size 16
 ```
 
 Useful options:
 
 | Option | Default | Purpose |
 | --- | ---: | --- |
+| `--model_name` | `resnet18` | (**`train_resnet.py` only**) ResNet architecture to use: `resnet18`, `resnet34`, `resnet50`, `resnet101`, `resnet152` |
 | `--dataset_dir` | `ml_dataset` | Dataset containing `train`, `val`, and `test` |
-| `--epochs` | `20` | Maximum training epochs |
-| `--batch_size` | `32` | DataLoader batch size |
-| `--lr` | `0.001` | Adam learning rate |
+| `--epochs` | `20` | Maximum training epochs. *Tip: Start with 20-30; early stopping handles convergence.* |
+| `--batch_size` | `32` | DataLoader batch size. *Tip: Use 32 for smaller models (`resnet18`/`34`). Reduce to 16 or 8 for larger models (`resnet50+`) to avoid GPU memory limits.* |
+| `--lr` | `0.001` | Adam learning rate. *Tip: 0.001 is a good starting point for Adam.* |
 | `--output_dir` | `train` | Parent folder for timestamped runs |
 | `--patience` | `5` | Validation-loss early-stopping patience |
 
-Training uses an ImageNet-initialized ResNet-18, replaces its final layer, and
+Training uses an ImageNet-initialized ResNet, replaces its final layer, and
 saves a timestamped run containing:
 
-- `best_resnet18_model.pth`
+- `best_<model_name>_model.pth`
 - `labels.txt`
 - `training_history.png`
 - `classification_report.json`
