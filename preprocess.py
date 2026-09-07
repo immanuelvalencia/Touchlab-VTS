@@ -619,6 +619,13 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         raise SystemExit(run_cli(sys.argv[1:]))
 
+    # Enable High DPI awareness on Windows
+    try:
+        import ctypes
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)
+    except Exception:
+        pass
+
     root = tk.Tk()
     app = ExportApp(root)
     root.mainloop()

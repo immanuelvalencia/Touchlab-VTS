@@ -402,6 +402,13 @@ class TestUIApp:
             self.update_image_view()
 
 if __name__ == "__main__":
+    # Enable High DPI awareness on Windows
+    try:
+        import ctypes
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)
+    except Exception:
+        pass
+
     root = tk.Tk()
     app = TestUIApp(root)
     root.mainloop()
