@@ -7,11 +7,7 @@ import torch.nn as nn
 from torchvision import datasets, transforms, models
 from torch.utils.data import DataLoader
 from PIL import Image, ImageTk
-import matplotlib
-matplotlib.use("TkAgg")
-from matplotlib.figure import Figure
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, ConfusionMatrixDisplay
+from sklearn.metrics import classification_report, accuracy_score
 import numpy as np
 
 class TestUIApp:
@@ -43,15 +39,15 @@ class TestUIApp:
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.dataset = None
         self.current_idx = 0
+        self.filtered_indices = []
         self.predictions_cache = {}  # Store predictions so we don't recompute per image when stepping
 
         self.setup_ui()
         
     def setup_ui(self):
         # Main Layout
-        self.sidebar = ttk.Frame(self.root, width=300, padding=10)
+        self.sidebar = ttk.Frame(self.root, padding=10)
         self.sidebar.pack(side=tk.LEFT, fill=tk.Y)
-        self.sidebar.pack_propagate(False)
 
         self.main_area = ttk.Frame(self.root, padding=10)
         self.main_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -112,6 +108,25 @@ class TestUIApp:
 
         self.img_label = ttk.Label(self.img_frame, text="No Image Loaded")
         self.img_label.pack(side=tk.LEFT, expand=True)
+        
+        # middle: browser list
+        self.browser_frame = ttk.Frame(self.img_frame, padding=(10, 0))
+        self.browser_frame.pack(side=tk.LEFT, fill=tk.Y)
+        
+        ttk.Label(self.browser_frame, text="Filter by Class:").pack(anchor=tk.W)
+        self.category_var = tk.StringVar(value="All")
+        self.category_cb = ttk.Combobox(self.browser_frame, textvariable=self.category_var, state="readonly")
+        self.category_cb.pack(fill=tk.X, pady=(0, 10))
+        self.category_cb.bind("<<ComboboxSelected>>", self.on_category_select)
+        
+        list_frame = ttk.Frame(self.browser_frame)
+        list_frame.pack(fill=tk.BOTH, expand=True)
+        self.photo_list = tk.Listbox(list_frame, width=30)
+        self.photo_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=self.photo_list.yview)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.photo_list.config(yscrollcommand=scrollbar.set)
+        self.photo_list.bind("<<ListboxSelect>>", self.on_listbox_select)
 
         self.info_frame = ttk.Frame(self.img_frame, padding=20)
         self.info_frame.pack(side=tk.RIGHT, fill=tk.Y)
@@ -129,39 +144,55 @@ class TestUIApp:
 
         nav_frame = ttk.Frame(self.info_frame)
         nav_frame.pack(anchor=tk.W)
-        ttk.Button(nav_frame, text="<< Prev", command=self.prev_image, width=10).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(nav_frame, text="Next >>", command=self.next_image, width=10).pack(side=tk.LEFT)
+        ttk.Button(nav_frame, text="<< Prev", command=self.prev_image, width=8).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(nav_frame, text="Next >>", command=self.next_image, width=8).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(nav_frame, text="Random", command=self.random_image, width=8).pack(side=tk.LEFT)
 
     def setup_metrics_area(self):
-        metrics_lf = ttk.LabelFrame(self.bottom_frame, text="Metrics & Confusion Matrix", padding=10)
+        metrics_lf = ttk.LabelFrame(self.bottom_frame, text="Metrics", padding=10)
         metrics_lf.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
 
-        # Split left (text) and right (plot)
         self.text_frame = ttk.Frame(metrics_lf)
-        self.text_frame.pack(side=tk.LEFT, fill=tk.Y)
+        self.text_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        self.plot_frame = ttk.Frame(metrics_lf)
-        self.plot_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-
-        self.metrics_text = tk.Text(self.text_frame, width=50, height=20, font=("Consolas", 9))
-        self.metrics_text.pack(fill=tk.Y, expand=True)
+        self.metrics_text = tk.Text(self.text_frame, height=20, font=("Consolas", 9))
+        self.metrics_text.pack(fill=tk.BOTH, expand=True)
         self.metrics_text.insert(tk.END, "Run validation to see metrics here...")
         self.metrics_text.config(state=tk.DISABLED)
-
-        self.fig = Figure(figsize=(6, 5), dpi=100)
-        self.ax = self.fig.add_subplot(111)
-        self.ax.text(0.5, 0.5, "Confusion Matrix", horizontalalignment='center', verticalalignment='center', transform=self.ax.transAxes)
-        self.ax.axis('off')
-        
-        self.canvas = FigureCanvasTkAgg(self.fig, master=self.plot_frame)
-        self.canvas.draw()
-        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
     def browse_model(self):
         path = filedialog.askopenfilename(title="Select Model Weights", filetypes=[("PyTorch Models", "*.pth"), ("All Files", "*.*")])
         if path:
             self.model_path.set(path)
             self.model = None # Reset model
+            
+            # Auto-detect ResNet architecture
+            try:
+                state_dict = torch.load(path, map_location="cpu")
+                keys = state_dict.keys()
+                has_bottleneck = any("layer1.0.conv3.weight" in k for k in keys)
+                
+                max_block = -1
+                for k in keys:
+                    if k.startswith("layer3."):
+                        parts = k.split(".")
+                        if len(parts) > 1 and parts[1].isdigit():
+                            max_block = max(max_block, int(parts[1]))
+                
+                detected_arch = None
+                if has_bottleneck:
+                    if max_block >= 35: detected_arch = "resnet152"
+                    elif max_block >= 22: detected_arch = "resnet101"
+                    else: detected_arch = "resnet50"
+                else:
+                    if max_block >= 5: detected_arch = "resnet34"
+                    elif max_block >= 1: detected_arch = "resnet18"
+                        
+                if detected_arch:
+                    self.model_arch.set(detected_arch)
+            except Exception:
+                pass # Silent fallback if detection fails
+                
             # Look for labels.txt
             expected_labels = os.path.splitext(path)[0] + ".txt"
             if os.path.exists(expected_labels):
@@ -195,6 +226,18 @@ class TestUIApp:
         if not path or not os.path.isdir(path):
             return
             
+        # Check if user selected the parent dataset directory instead of a split
+        try:
+            subdirs = [d for d in os.listdir(path) if os.path.isdir(os.path.join(path, d))]
+            # If the directory contains split folders but not class folders
+            if set(subdirs).intersection({'train', 'val', 'test'}) and (not self.class_names or not set(self.class_names).intersection(subdirs)):
+                preferred_split = 'test' if 'test' in subdirs else ('val' if 'val' in subdirs else 'train')
+                path = os.path.join(path, preferred_split)
+                self.dataset_path.set(path)
+                messagebox.showinfo("Auto-corrected Dataset Path", f"You selected a directory containing dataset splits. Automatically selecting the '{preferred_split}' split:\n{path}")
+        except Exception:
+            pass
+
         data_transform = transforms.Compose([
             transforms.Resize((256, 256)),
             transforms.CenterCrop(224),
@@ -214,9 +257,11 @@ class TestUIApp:
                 if ds_classes != self.class_names:
                     messagebox.showwarning("Warning", f"Dataset classes ({len(ds_classes)}) do not match model labels ({len(self.class_names)})!\n\nDataset: {ds_classes}\nModel: {self.class_names}")
 
-            self.current_idx = 0
+            self.category_cb['values'] = ["All"] + self.dataset.classes
+            self.category_var.set("All")
             self.predictions_cache.clear()
-            self.update_image_view()
+            self.on_category_select()
+            
             self.status_label.config(text=f"Dataset loaded: {len(self.dataset)} images")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load dataset: {e}")
@@ -309,15 +354,6 @@ class TestUIApp:
         self.metrics_text.insert(tk.END, report)
         self.metrics_text.config(state=tk.DISABLED)
 
-        # Plot confusion matrix
-        cm = confusion_matrix(y_true, y_pred)
-        self.ax.clear()
-        
-        disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=self.dataset.classes)
-        disp.plot(ax=self.ax, cmap="Blues", xticks_rotation='vertical', colorbar=False)
-        self.fig.tight_layout()
-        self.canvas.draw()
-
     def update_image_view(self):
         if not self.dataset:
             return
@@ -391,21 +427,74 @@ class TestUIApp:
         else:
             self.pred_ui_label.config(foreground="red")
 
+    def on_category_select(self, event=None):
+        if not self.dataset: return
+        cat = self.category_var.get()
+        self.photo_list.delete(0, tk.END)
+        self.filtered_indices = []
+        for i, (path, label_idx) in enumerate(self.dataset.samples):
+            cls_name = self.dataset.classes[label_idx]
+            if cat == "All" or cat == cls_name:
+                self.filtered_indices.append(i)
+                self.photo_list.insert(tk.END, os.path.basename(path))
+        
+        if self.filtered_indices:
+            self.photo_list.selection_set(0)
+            self.current_idx = self.filtered_indices[0]
+            self.update_image_view()
+
+    def on_listbox_select(self, event):
+        sel = self.photo_list.curselection()
+        if not sel: return
+        list_idx = sel[0]
+        self.current_idx = self.filtered_indices[list_idx]
+        self.update_image_view()
+
+    def random_image(self):
+        if self.filtered_indices:
+            import random
+            list_idx = random.randint(0, len(self.filtered_indices)-1)
+            self.photo_list.selection_clear(0, tk.END)
+            self.photo_list.selection_set(list_idx)
+            self.photo_list.see(list_idx)
+            self.current_idx = self.filtered_indices[list_idx]
+            self.update_image_view()
+
     def prev_image(self):
-        if self.dataset and self.current_idx > 0:
-            self.current_idx -= 1
+        if not self.filtered_indices: return
+        try:
+            curr_list_idx = self.filtered_indices.index(self.current_idx)
+        except ValueError:
+            curr_list_idx = 0
+            
+        if curr_list_idx > 0:
+            new_idx = curr_list_idx - 1
+            self.photo_list.selection_clear(0, tk.END)
+            self.photo_list.selection_set(new_idx)
+            self.photo_list.see(new_idx)
+            self.current_idx = self.filtered_indices[new_idx]
             self.update_image_view()
 
     def next_image(self):
-        if self.dataset and self.current_idx < len(self.dataset) - 1:
-            self.current_idx += 1
+        if not self.filtered_indices: return
+        try:
+            curr_list_idx = self.filtered_indices.index(self.current_idx)
+        except ValueError:
+            curr_list_idx = 0
+            
+        if curr_list_idx < len(self.filtered_indices) - 1:
+            new_idx = curr_list_idx + 1
+            self.photo_list.selection_clear(0, tk.END)
+            self.photo_list.selection_set(new_idx)
+            self.photo_list.see(new_idx)
+            self.current_idx = self.filtered_indices[new_idx]
             self.update_image_view()
 
 if __name__ == "__main__":
     # Enable High DPI awareness on Windows
     try:
         import ctypes
-        ctypes.windll.shcore.SetProcessDpiAwareness(1)
+        ctypes.windll.shcore.SetProcessDpiAwareness(2) # Per Monitor V2
     except Exception:
         pass
 
