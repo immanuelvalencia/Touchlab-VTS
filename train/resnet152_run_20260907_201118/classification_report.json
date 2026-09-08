@@ -1,0 +1,63 @@
+{
+    "circular_rim": {
+        "precision": 0.8140243902439024,
+        "recall": 0.978021978021978,
+        "f1-score": 0.8885191347753744,
+        "support": 273.0
+    },
+    "double_circular_rim": {
+        "precision": 0.9915966386554622,
+        "recall": 1.0,
+        "f1-score": 0.9957805907172996,
+        "support": 118.0
+    },
+    "double_curvature": {
+        "precision": 0.9879518072289156,
+        "recall": 1.0,
+        "f1-score": 0.9939393939393939,
+        "support": 82.0
+    },
+    "multiface_vertex": {
+        "precision": 0.9458128078817734,
+        "recall": 0.9948186528497409,
+        "f1-score": 0.9696969696969697,
+        "support": 193.0
+    },
+    "planar": {
+        "precision": 1.0,
+        "recall": 0.9667359667359667,
+        "f1-score": 0.9830866807610994,
+        "support": 481.0
+    },
+    "sharp_apex": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 41.0
+    },
+    "single_curvature": {
+        "precision": 0.9926470588235294,
+        "recall": 1.0,
+        "f1-score": 0.996309963099631,
+        "support": 135.0
+    },
+    "straight_edge": {
+        "precision": 0.9375,
+        "recall": 0.7792207792207793,
+        "f1-score": 0.851063829787234,
+        "support": 308.0
+    },
+    "accuracy": 0.944206008583691,
+    "macro avg": {
+        "precision": 0.958691587854198,
+        "recall": 0.9648496721035581,
+        "f1-score": 0.9597995703471253,
+        "support": 1631.0
+    },
+    "weighted avg": {
+        "precision": 0.9488340496340034,
+        "recall": 0.944206008583691,
+        "f1-score": 0.9437256756541208,
+        "support": 1631.0
+    }
+}

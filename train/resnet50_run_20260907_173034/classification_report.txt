@@ -1,0 +1,17 @@
+Final Test Accuracy: 0.9362
+
+Classification Report:
+                     precision    recall  f1-score   support
+
+       circular_rim       0.79      0.98      0.88       273
+double_circular_rim       1.00      1.00      1.00       118
+   double_curvature       0.98      1.00      0.99        82
+   multiface_vertex       0.93      0.99      0.96       193
+             planar       1.00      0.95      0.97       481
+         sharp_apex       1.00      1.00      1.00        41
+   single_curvature       0.99      0.99      0.99       135
+      straight_edge       0.94      0.77      0.85       308
+
+           accuracy                           0.94      1631
+          macro avg       0.95      0.96      0.95      1631
+       weighted avg       0.94      0.94      0.94      1631

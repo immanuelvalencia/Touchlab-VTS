@@ -1,0 +1,8 @@
+circular_rim
+double_circular_rim
+double_curvature
+multiface_vertex
+planar
+sharp_apex
+single_curvature
+straight_edge
