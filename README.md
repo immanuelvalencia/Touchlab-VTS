@@ -167,6 +167,86 @@ saves a timestamped run containing:
 - `classification_report.txt`
 - `confusion_matrix.png`
 
+### Direct object classification from multiple touches
+
+`train_attention.py` trains a shared image backbone and gated attention pooling
+with one object label per group of touches. Use the existing `preprocess.py`
+exporter with **object labels**, video frames enabled, and train/validation/test
+splits. Point the trainer at that export, not the raw `dataset/GelSight` folder:
+
+```text
+ml_dataset/
+  train/cube/*.png
+  train/sphere/*.png
+  val/cube/*.png
+  val/sphere/*.png
+  test/cube/*.png
+  test/sphere/*.png
+```
+
+All object classes must appear in each split. `valid` and `validation` are also
+accepted instead of `val`. The existing split assignments are preserved.
+
+```powershell
+python train_attention.py --dataset_dir ml_dataset --model_name resnet18 --epochs 30 --batch_size 4 --min_touches 1 --max_touches 8
+python train_attention.py --dataset_dir ml_dataset --model_name efficientnet_b0 --lr 0.001 --backbone_lr 0.00001
+python train_attention.py --dataset_dir ml_dataset --model_name mobilenet_v3_small --freeze_backbone
+```
+
+Use `--help` for all arguments. Supported backbone families are ResNet,
+EfficientNet, MobileNet, DenseNet, and ConvNeXt. Additional controls include
+`--weights DEFAULT` (or a torchvision weight name / `NONE`), `--attention_dim 128`,
+`--dropout 0.25`, `--image_size 224`, `--num_workers 0`, `--patience 7`,
+`--train_bags_per_class 100`, and `--eval_bags_per_class 50`. `--pooling mean`
+provides an averaging baseline. Batch size counts **object bags**: four bags of
+eight touches can encode 32 images in one step.
+
+Frames whose exported names share `GelSight_sequence_NNN_frame_...` are grouped
+as one contact. The exporter's `_rot180`, `_hflip`, and `_vflip` variants remain
+part of that same contact. Training samples distinct contacts without replacement
+within each bag, then chooses one exported frame/variant per contact. Evaluation
+uses the middle original frame. Keep the exporter's filenames and manifest;
+arbitrarily renamed images cannot be reliably associated with their acquisitions.
+Do not combine multiple separately numbered exports into one class directory.
+
+Bags are class-balanced, with new training bags each epoch and fixed validation
+and test bags. The script checks contact overlap between splits and rejects
+known local-feature exports. These are synthetic same-class groups, not verified
+touch sequences from one physical object. Performance therefore measures held-out
+contact recognition; unseen-object evaluation needs object-instance grouping.
+
+The default test counts are `--eval_touches 1 2 3 5 8`. Each count uses a prefix
+of the same fixed test bags. Counts exceeding the number of distinct test contacts
+in **any** class are explicitly skipped; contacts are never duplicated to reach
+a requested count. Validation bag sizes are capped by the smallest validation
+class. Training requires at least `--max_touches` contacts in every training class.
+
+`--dry_run` validates the export and writes manifests without downloading weights
+or training. Every run saves `config.json`, `labels.txt`, `contacts.json`,
+`val_bags.json`, `test_bags.json`, `history.json`, `best_model.pth`, and
+`test_metrics.json` (per-touch accuracy, classification reports, confusion matrices,
+and predictions). Dry runs only save configuration and manifests. The best model
+is selected by validation loss; the test set is evaluated afterward.
+
+The checkpoint contains both the backbone and attention head. It is a different
+architecture from the single-image feature encoders used by `predict.py`.
+To reload it without another pretrained-weight download:
+
+```python
+import torch
+from train_attention import AttentionClassifier
+
+checkpoint = torch.load("path/to/best_model.pth", map_location="cpu", weights_only=True)
+model = AttentionClassifier(**checkpoint["model_config"], weights="NONE")
+model.load_state_dict(checkpoint["model_state_dict"])
+model.eval()
+# images: [batch, touches, 3, image_size, image_size], RGB resized to a square
+# and normalized with ImageNet mean [0.485, 0.456, 0.406], std [0.229, 0.224, 0.225].
+# mask: [batch, touches] boolean; True for real contacts, False for padding.
+# logits, touch_weights = model(images, mask)
+# Predicted class names follow checkpoint["class_names"].
+```
+
 ### 5. Deploy a trained encoder
 
 `predict.py` requires a weights file and same-stem label file:
