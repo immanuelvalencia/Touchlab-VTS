@@ -8,6 +8,7 @@ import unittest
 from PIL import Image
 import torch
 
+from preprocess import export_records, scan_dataset
 from train_attention import (
     AttentionClassifier, TouchBags, build_encoder, collate_bags, main,
     representative_frame, scan_export,
@@ -57,8 +58,36 @@ class AttentionTrainingTests(unittest.TestCase):
             root = Path(directory)
             make_export(root)
             Image.new("RGB", (40, 40)).save(root / "test/cube/GelSight_sequence_001_frame_9999_raw.png")
-            with self.assertRaisesRegex(ValueError, "Contact occurs in both"):
+            with self.assertRaisesRegex(ValueError, "Contact occurs in both.*Re-export the raw dataset"):
                 scan_export(root)
+
+    def test_fresh_preprocess_export_keeps_acquisitions_together(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for label in ("cube", "sphere"):
+                for sequence in range(1, 7):
+                    source = root / "raw" / label / "video" / f"sequence_{sequence:03d}"
+                    source.mkdir(parents=True)
+                    for frame in range(2):
+                        stem = f"sequence_{sequence:03d}_frame_{frame:04d}"
+                        image_name = stem + "_raw.png"
+                        Image.new("RGB", (40, 40)).save(source / image_name)
+                        (source / (stem + "_metadata.json")).write_text(json.dumps({
+                            "label": label, "sensor": "GelSight", "is_video_sequence": True,
+                            "saved_features": [image_name],
+                        }))
+            records = scan_dataset(root / "raw", include_video=True)
+            export_records(records, root / "export", augmentations=("hflip",))
+            labels, contacts = scan_export(root / "export")
+            self.assertEqual(labels, ["cube", "sphere"])
+            for label in labels:
+                keys = [set(contacts[split][label]) for split in ("train", "val", "test")]
+                self.assertEqual(sum(map(len, keys)), 6)
+                self.assertEqual(len(set.union(*keys)), 6)
+                for split in ("train", "val", "test"):
+                    self.assertTrue(contacts[split][label])
+                    for paths in contacts[split][label].values():
+                        self.assertEqual(len(paths), 4 if split == "train" else 2)
 
     def test_rejects_feature_export_and_manifest_overlap(self):
         with tempfile.TemporaryDirectory() as directory:

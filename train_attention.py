@@ -14,7 +14,6 @@ from datetime import datetime
 import json
 from pathlib import Path
 import random
-import re
 
 from PIL import Image
 import torch
@@ -22,6 +21,8 @@ from torch import nn
 from torch.utils.data import DataLoader, Dataset
 from torchvision import models, transforms
 from tqdm import tqdm
+
+from tools.dataset_contacts import AUGMENTATION, IMAGE_EXTENSIONS, contact_key
 
 
 BACKBONES = (
@@ -32,20 +33,10 @@ BACKBONES = (
     + [f"densenet{n}" for n in (121, 161, 169, 201)]
     + [f"convnext_{s}" for s in ("tiny", "small", "base", "large")]
 )
-IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
-AUGMENTATION = re.compile(r"_(rot180|hflip|vflip)$")
-VIDEO_FRAME = re.compile(r"^(.*sequence_\d+)_frame_(\d+)(?:_|$)")
 
 
 def write_json(path, value):
     Path(path).write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
-
-
-def contact_key(path):
-    """Understand sensor-prefixed filenames produced by preprocess.py."""
-    stem = AUGMENTATION.sub("", path.stem)
-    match = VIDEO_FRAME.match(stem)
-    return "video::" + match[1] if match else "image::" + stem
 
 
 def scan_export(root):
@@ -92,7 +83,13 @@ def scan_export(root):
                 key = f"{relative_parent}/{contact_key(path)}"
                 identity = (label, key)
                 if identity in owners and owners[identity] != split:
-                    raise ValueError(f"Contact occurs in both {owners[identity]} and {split}: {label}/{key}")
+                    raise ValueError(
+                        f"Contact occurs in both {owners[identity]} and {split}: {label}/{key}. "
+                        "Frames from one acquisition must stay in a single split. "
+                        "This can result from an older frame-level export or stale files in a reused output folder. "
+                        "Re-export the raw dataset with preprocess.py --include-video --category label "
+                        "--output_dir <new_empty_directory>, then train with --dataset_dir <new_empty_directory>."
+                    )
                 owners[identity] = split
                 groups[key].append(path)
             if not groups:

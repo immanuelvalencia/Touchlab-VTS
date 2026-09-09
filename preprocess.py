@@ -89,6 +89,17 @@ def process_image_file(src_file, dst_file, augmentation=None):
         shutil.copy2(src_file, dst_file)
 
 
+def validate_output_directory(output_dir):
+    """Prevent old split files from surviving a new grouped export."""
+    output_path = Path(output_dir)
+    if output_path.exists() and (not output_path.is_dir() or any(output_path.iterdir())):
+        raise ValueError(
+            f"Export destination must be new or empty: {output_path}. "
+            "Choose a new --output_dir (or a new output folder in the GUI). "
+            "Reusing an export can leave stale frames in different splits."
+        )
+
+
 def export_records(
     label_to_files,
     output_dir,
@@ -102,6 +113,7 @@ def export_records(
     augmentations=(),
 ):
     output_path = Path(output_dir)
+    validate_output_directory(output_path)
     for split_dir in ["train", "val", "test"]:
         os.makedirs(output_path / split_dir, exist_ok=True)
 
@@ -172,7 +184,7 @@ def parse_args(argv):
         description="Export a grouped visuo-tactile image dataset from metadata."
     )
     parser.add_argument("--input_dir", default="dataset", help="Directory containing metadata files.")
-    parser.add_argument("--output_dir", default="ml_dataset", help="Output dataset directory.")
+    parser.add_argument("--output_dir", default="ml_dataset", help="New or empty output dataset directory.")
     parser.add_argument(
         "--category",
         choices=("label", "local_feature"),
@@ -485,6 +497,12 @@ class ExportApp:
             
         if not self.label_to_files:
             messagebox.showwarning("Warning", "No files to export. Please scan the directory first.")
+            return
+
+        try:
+            validate_output_directory(self.output_var.get())
+        except ValueError as exc:
+            messagebox.showerror("Export destination", str(exc))
             return
 
         self.is_exporting = True
